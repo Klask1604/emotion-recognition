@@ -53,21 +53,11 @@ def format_window_line(multi: MultiWindowHrvResult | None) -> str:
     return "[WINDOW] " + " ".join(parts)
 
 
-def format_affect_line(decision: PhysiologyDecision) -> str:
-    return (
-        f"[AFFECT] valence={decision.valence_10}/10 "
-        f"({decision.valence_label}) | "
-        f"quadrant={decision.affect_quadrant} | "
-        f"z_pulse_amp={decision.z_pulse_amp:+.2f}"
-    )
-
-
 def format_decision_block(decision: PhysiologyDecision) -> str:
     lines = [
         format_physiology_line(decision),
         format_motion_line(decision),
         format_baseline_line(decision),
-        format_affect_line(decision),
         format_window_line(decision.multi_window),
     ]
     return "\n".join(lines)

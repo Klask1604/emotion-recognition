@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(venv/Scripts/python.exe scripts/generate_grafana_dashboards.py)",
+      "Bash(venv/Scripts/python.exe -c ' *)"
+    ]
+  }
+}

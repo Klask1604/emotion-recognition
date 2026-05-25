@@ -150,10 +150,6 @@ class PhysiologyDecision:
     decision_reason: str
     baseline_ready: bool
     multi_window: MultiWindowHrvResult | None = None
-    valence_10: int = 5
-    valence_label: str = "neutral"
-    affect_quadrant: str = "calm"
-    z_pulse_amp: float = 0.0
 
 
 @dataclass
@@ -188,7 +184,7 @@ class MultiWindowResult:
     w60: WindowResult
     w90: WindowResult
     best: WindowResult
-    best_window_label: str  # "w30" | "w60" | "w90"
+    best_window_label: str  # always "w30" (decision); w60/w90 are diagnostic only
     decision: PhysiologyDecision | None
     ibi_buffer_size: int
     motion_class: str

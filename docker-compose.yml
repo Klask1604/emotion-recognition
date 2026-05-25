@@ -75,18 +75,6 @@ services:
     volumes:
       - ./data:/data
 
-  ppg-processor:
-    <<: *python-service
-    container_name: biofizic-ppg-processor
-    command:
-      - python
-      - services/ppg_processor.py
-      - --broker
-      - ${MQTT_BROKER:-localhost}
-      - --port
-      - "${MQTT_PORT:-1883}"
-
-
   mqtt-logger:
     <<: *python-service
     container_name: biofizic-mqtt-logger

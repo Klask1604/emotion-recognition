@@ -8,7 +8,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 5,
+  "version": 6,
   "refresh": "1s",
   "panels": [
     {
@@ -73,7 +73,7 @@
     },
     {
       "id": 2,
-      "title": "Valence (live)",
+      "title": "Kubios label",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -95,7 +95,7 @@
           "format": "table",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT valence_10 AS v FROM biofizic_state_live WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT emotion AS v FROM biofizic_state_live WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -253,7 +253,7 @@
     },
     {
       "id": 5,
-      "title": "Arousal and valence (live 1 Hz)",
+      "title": "Arousal (live 1 Hz)",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -275,7 +275,7 @@
           "format": "time_series",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT time, arousal_10, valence_10 FROM biofizic_state_live WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time",
+          "rawSql": "SELECT time, arousal_10 FROM biofizic_state_live WHERE $__timeFilter(time) AND arousal_10 IS NOT NULL ORDER BY time",
           "refId": "A"
         }
       ],
@@ -439,7 +439,7 @@
           "format": "time_series",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT time, skin_temp FROM biofizic_sensors_batch WHERE $__timeFilter(time) AND skin_temp > 0 ORDER BY time",
+          "rawSql": "SELECT time, skin_temp FROM biofizic_acquisition_batch WHERE $__timeFilter(time) AND skin_temp > 0 ORDER BY time",
           "refId": "A"
         },
         {
@@ -451,7 +451,7 @@
           "format": "time_series",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT time, hr FROM biofizic_sensors_batch WHERE $__timeFilter(time) AND hr > 0 ORDER BY time",
+          "rawSql": "SELECT time, hr FROM biofizic_acquisition_batch WHERE $__timeFilter(time) AND hr > 0 ORDER BY time",
           "refId": "B"
         }
       ],

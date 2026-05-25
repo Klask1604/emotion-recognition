@@ -8,14 +8,13 @@ Companion Android app (sensor acquisition): [biofizic-android](https://github.co
 
 ```
 Galaxy Watch (Android app)
-  → MQTT: ibi/batch, ppg/batch, sensors/batch @ 1 Hz
-       ↓
-compute-engine     → HRV 15/30/60/90 s, personal baseline, HAR, arousal + valence
-ppg-processor      → PPG DSP, z_pulse_amp (sympathetic proxy)
-mqtt-logger        → InfluxDB 3
-Grafana            → session dashboards
-       ↓
-Watch UI ← biofizic/state/live (1 Hz) + biofizic/combined (retained bootstrap ~30s)
+  -> MQTT: acquisition/batch @ 1 Hz (IBI + PPG + motion + HR)
+       v
+compute-engine     -> HRV 30 s, personal baseline, HAR, arousal
+mqtt-logger        -> InfluxDB 3
+Grafana            -> session dashboards
+       v
+Watch UI <- biofizic/state/live (1 Hz, hysteresis) + biofizic/state (retained epoch bootstrap)
 ```
 
 **Production path:** all decisions run in `services/compute_engine.py` → `biofizic/pipeline/PhysiologyPipeline`. There is no separate fusion or ML emotion service in the default stack.
@@ -26,15 +25,14 @@ Watch UI ← biofizic/state/live (1 Hz) + biofizic/combined (retained bootstrap 
 |-------|---------|
 | `arousal_10` | Kubios stress index → 1–10, capped by motion HAR + alert gate |
 | `emotion` | Display label (Relaxat … Ridicat) from arousal |
-| `valence_10` | Heuristic 1–10 from RMSSD z + PPG pulse amplitude z |
-| `affect_quadrant` | calm / activated / tense / depleted |
-| `labels_agree` | Kubios zone label vs personal baseline z-label |
+| `emotion_baseline` | Same scale, but anchored to the personal RMSSD/SI baseline |
+| `labels_agree` | Whether Kubios zone label matches the personal baseline label |
 
 ## Repository layout
 
 ```
 biofizic/           Core library (signal, HRV, baseline, decision, motion HAR, pipeline)
-services/           Docker entrypoints (compute_engine, ppg_processor, mqtt_logger)
+services/           Docker entrypoints (compute_engine, mqtt_logger)
 train/              Offline training (WISDM HAR, optional WESAD)
 scripts/            Grafana dashboard generator, reports
 docker/             InfluxDB + Grafana provisioning
@@ -58,7 +56,7 @@ cp .env.example .env
 # Edit MQTT_BROKER, MQTT_PORT, INFLUX_DATABASE, Grafana credentials
 ```
 
-2. Build and run (5 services: compute-engine, ppg-processor, mqtt-logger, influxdb, grafana):
+2. Build and run (4 services: compute-engine, mqtt-logger, influxdb, grafana):
 
 ```bash
 docker compose build
@@ -88,10 +86,9 @@ Provisioning is configured with `allowUiUpdates: false` so file UIDs stay author
 
 ## MQTT topics (summary)
 
-**Watch → server:** `biofizic/ibi/batch`, `biofizic/ppg/batch`, `biofizic/sensors/batch`, `biofizic/cmd/calibrate`  
-**Server → watch:** `biofizic/state/live` (UI 1 Hz), `biofizic/combined` (retained ~30s), `biofizic/calibration/status`  
-**Inter-service:** `biofizic/ppg_hrv` (ppg-processor → compute-engine)  
-**Grafana / Influx (mqtt-logger):** `state`, `state/live`, `state/windows`, `combined`, `sensors/batch`, `ppg_hrv`, `ppg_pipeline`
+**Watch -> server:** `biofizic/acquisition/batch` (1 Hz schema v2), `biofizic/cmd/calibrate`
+**Server -> watch:** `biofizic/state/live` (UI 1 Hz, hysteresis-smoothed), `biofizic/state` (retained epoch decision, doubles as reconnect bootstrap), `biofizic/calibration/status`
+**Grafana / Influx (mqtt-logger):** `state`, `state/live`, `state/windows`, `acquisition/batch`
 
 ## Models & datasets (local only)
 
@@ -120,23 +117,23 @@ Human-readable decision logs when running compute-engine:
 
 ```
 [PHYSIO] activation_level=6/10 (Moderat) | heart_rate=78bpm | rmssd=42ms ...
-[AFFECT] valence=6/10 (neutral) | quadrant=calm | z_pulse_amp=+0.2
+[MOTION] activity=STILL conf=0.91 | context=REST | reason=physio=Moderat|...
+[BASELINE] ready=yes | personal_stress_index=10.2 | z_score=+0.45 | labels_match=yes
 ```
 
 ## Grafana dashboards
 
 | UID | Purpose |
 |-----|---------|
-| `biofizic-live-overview` | Arousal + valence from `biofizic_state_live` (1 Hz) |
+| `biofizic-live-overview` | Arousal + Kubios label from `biofizic_state_live` (1 Hz) |
 | `biofizic-hrv-analysis` | Multi-window RMSSD / stress index |
 | `biofizic-baseline-compare` | Kubios vs personal baseline |
-| `biofizic-affect-classification` | 2D affect axes + quadrants |
 | `biofizic-session-overview` | Full session timeline |
 | `biofizic-ppg-pipeline` | Raw PPG reception + motion gate |
 | `biofizic-motion-har` | HAR class + acceleration |
 
-Queries use **`biofizic_state_live`** for live affect (1 Hz) and **`biofizic_state`** for full 30s epoch decisions.
+Queries use **`biofizic_state_live`** for live arousal (1 Hz) and **`biofizic_state`** for full 30s epoch decisions.
 
 ## License / thesis context
 
-Bachelor thesis project — physiological monitoring for VR/wellness research. ML emotion classifier (WESAD) is optional and gated; default production uses deterministic Kubios + heuristics.
+Bachelor thesis project for physiological monitoring in VR/wellness research. Arousal is derived deterministically from the Kubios stress index (Baevsky 1984; Kubios HRV User Guide), capped by a wrist-HAR classifier (WISDM) and a personal RMSSD/SI baseline. Valence is **not** estimated. Wrist PPG cannot reliably measure emotional valence.

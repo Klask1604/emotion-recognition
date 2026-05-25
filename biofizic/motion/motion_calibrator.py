@@ -6,7 +6,7 @@ from collections import deque
 
 import numpy as np
 
-from biofizic.config import PASSIVE_EMA_ALPHA, PASSIVE_REST_EPOCHS_MIN
+from biofizic.config import BASELINE_EMA_ALPHA, STILL_EPOCHS_BEFORE_BASELINE_LOCK
 
 STILL_CLASS = "STILL"
 
@@ -18,7 +18,7 @@ class MotionCalibrator:
     """
 
     def __init__(self) -> None:
-        self._warmup: deque[np.ndarray] = deque(maxlen=PASSIVE_REST_EPOCHS_MIN)
+        self._warmup: deque[np.ndarray] = deque(maxlen=STILL_EPOCHS_BEFORE_BASELINE_LOCK)
         self._mean: np.ndarray | None = None
         self._std: np.ndarray | None = None
         self.ready = False
@@ -32,7 +32,7 @@ class MotionCalibrator:
 
         if not self.ready:
             self._warmup.append(x)
-            if len(self._warmup) < PASSIVE_REST_EPOCHS_MIN:
+            if len(self._warmup) < STILL_EPOCHS_BEFORE_BASELINE_LOCK:
                 return
             mat = np.stack(list(self._warmup))
             self._mean = np.median(mat, axis=0)
@@ -42,7 +42,7 @@ class MotionCalibrator:
             self.ready = True
             return
 
-        alpha = PASSIVE_EMA_ALPHA
+        alpha = BASELINE_EMA_ALPHA
         assert self._mean is not None and self._std is not None
         self._mean = (1.0 - alpha) * self._mean + alpha * x
         dev = np.abs(x - self._mean)

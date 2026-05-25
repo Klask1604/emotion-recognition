@@ -35,22 +35,17 @@ log = logging.getLogger("mqtt_logger")
 
 # ── Configurare topicuri → campuri InfluxDB ────────────────────────────────────
 
-# Campuri numerice per topic (measurement = topic cu / → _)
+# Numeric fields per topic (Influx measurement = topic with / replaced by _).
 FLOAT_FIELDS: dict[str, list[str]] = {
-    "biofizic/ppg_hrv": [
-        "rmssd_ppg", "mean_hr_ppg", "sdnn_ppg", "pnn50_ppg",
-        "mean_ibi_ppg", "ibi_n_ppg", "peak_count",
-        "pulse_amp_mean", "pulse_amp_std", "z_pulse_amp",
-    ],
     "biofizic/state": [
-        "arousal_10", "arousal_pct", "valence_10", "affect_quadrant_code", "mean_hr", "rmssd", "stress_index",
-        "baseline_si", "z_si", "z_pulse_amp", "motion_conf", "rmssd_w15", "rmssd_w30",
-        "rmssd_w60", "rmssd_w90", "stress_index_w15", "stress_index_w30",
+        "arousal_10", "arousal_pct", "mean_hr", "rmssd", "stress_index",
+        "baseline_si", "z_si", "motion_conf", "rmssd_w30",
+        "rmssd_w60", "rmssd_w90", "stress_index_w30",
         "stress_index_w60", "stress_index_w90", "window_sec",
     ],
     "biofizic/state/live": [
-        "arousal_10", "arousal_pct", "valence_10", "mean_hr", "rmssd", "stress_index",
-        "baseline_si", "z_si", "z_pulse_amp", "motion_conf", "window_sec", "ibi_buffer_size",
+        "arousal_10", "arousal_pct", "mean_hr", "rmssd", "stress_index",
+        "baseline_si", "z_si", "motion_conf", "window_sec", "ibi_buffer_size",
     ],
     "biofizic/state/windows": [
         "ibi_buffer_size",
@@ -61,20 +56,12 @@ FLOAT_FIELDS: dict[str, list[str]] = {
         "w90_rmssd", "w90_sdnn", "w90_pnn50", "w90_stress_index", "w90_mean_hr",
         "w90_ibi_count", "w90_covered_seconds",
     ],
-    "biofizic/combined": [
-        "arousal_10", "valence_10", "affect_quadrant_code", "confidence",
-        "hr", "rmssd", "stress_index", "z_pulse_amp", "acc_rms",
-    ],
 }
 
 # String fields (FlightSQL queryable; tags alone may not appear in schema)
-STRING_FIELDS: dict[str, list[str]] = {
-    "biofizic/state": ["affect_quadrant", "valence_label"],
-    "biofizic/state/live": ["affect_quadrant", "valence_label"],
-    "biofizic/combined": ["affect_quadrant", "valence_label"],
-}
+STRING_FIELDS: dict[str, list[str]] = {}
 
-# Campuri string salvate ca tag-uri InfluxDB (pentru filtrare si colorare Grafana)
+# String fields stored as InfluxDB tags (used for Grafana filtering / coloring).
 TAG_FIELDS: dict[str, list[str]] = {
     "biofizic/state": [
         "emotion", "emotion_baseline", "activity_mode", "motion_class", "why",
@@ -85,43 +72,30 @@ TAG_FIELDS: dict[str, list[str]] = {
     "biofizic/state/windows": [
         "motion_class", "w30_quality", "w60_quality", "w90_quality",
     ],
-    "biofizic/combined": [
-        "emotion", "emotion_baseline", "motion_class", "activity_mode",
-    ],
 }
 
-# Campuri booleane convertite la 0/1 pentru grafice
+# Boolean fields written as 0/1 floats so Grafana can plot them on axes.
 BOOL_FIELDS: dict[str, list[str]] = {
     "biofizic/state": [
-        "context_suppress_alert",
-        "context_rest_like",
-        "motion_gated",
-        "baseline_slow_ready",
         "profile_ready",
-        "session_baseline_ready",
+        "baseline_ready",
         "labels_agree",
-        "signal_trustworthy",
-        "stale",
-        "held",
     ],
     "biofizic/state/live": [
-        "live", "motion_gated", "profile_ready",
-        "context_suppress_alert", "context_rest_like", "baseline_ready",
+        "live",
+        "profile_ready",
+        "baseline_ready",
     ],
     "biofizic/state/windows": ["baseline_ready"],
 }
 
 ALL_TOPICS = list(FLOAT_FIELDS.keys()) + [
     "biofizic/acquisition/batch",
-    "biofizic/sensors/batch",
-    "biofizic/ppg_pipeline",
 ]
 
-# QoS 1 pentru decizii rare (30s) — supraviețuiesc reconnect-urilor MQTT
+# QoS 1 for low-rate epoch decisions so they survive MQTT reconnects.
 TOPIC_QOS: dict[str, int] = {
-    "biofizic/ppg_hrv": 1,
     "biofizic/state": 1,
-    "biofizic/combined": 1,
 }
 
 MQTT_KEEPALIVE_SEC = 120
@@ -131,25 +105,6 @@ FLOAT_FIELDS.update({
         "hr", "skin_temp", "ambient_temp",
         "acc_rms", "acc_p90", "acc_std", "gyro_rms", "gyro_p90", "gyro_std",
     ],
-    "biofizic/sensors/batch": [
-        "hr", "acc_rms", "acc_p90", "acc_std", "gyro_rms", "gyro_p90", "gyro_std",
-        "skin_temp", "ambient_temp",
-    ],
-    "biofizic/ppg_pipeline": [
-        "rmssd_ppg", "mean_hr_ppg", "peak_count", "pulse_amp_mean", "z_pulse_amp",
-        "snr_estimate",
-        "buffer_span_sec", "buffer_samples", "samples_in_batch", "green_mean",
-        "acc_rms", "batches_total",
-    ],
-})
-
-TAG_FIELDS.update({
-    "biofizic/ppg_pipeline": ["skip_reason", "activity_mode"],
-})
-
-BOOL_FIELDS.update({
-    "biofizic/combined": ["labels_agree"],
-    "biofizic/ppg_pipeline": ["motion_blocked", "epoch_skipped"],
 })
 
 
@@ -207,7 +162,6 @@ class MqttInfluxLogger:
         self.bucket    = influx_database
         self._msgs_ok  = 0
         self._msgs_err = 0
-        self._ppg_ok   = 0
 
         # InfluxDB 3 Core: token="ignored", org="ignored", bucket=database name
         self._influx = InfluxDBClient(
@@ -236,8 +190,8 @@ class MqttInfluxLogger:
         self._msgs_ok += 1
         if self._msgs_ok % 50 == 0:
             log.info(
-                "Scris %d puncte InfluxDB (%d erori, ppg_hrv=%d)",
-                self._msgs_ok, self._msgs_err, self._ppg_ok,
+                "Wrote %d points to InfluxDB (%d errors)",
+                self._msgs_ok, self._msgs_err,
             )
 
     def _on_write_err(self, conf, data: str, exception: Exception) -> None:
@@ -325,14 +279,6 @@ class MqttInfluxLogger:
 
         try:
             self.write_api.write(bucket=self.bucket, record=point)
-            if topic == "biofizic/ppg_hrv":
-                self._ppg_ok += 1
-                log.info(
-                    "ppg_hrv -> Influx rmssd=%.1f hr=%.0f (#%d)",
-                    float(data.get("rmssd_ppg") or 0),
-                    float(data.get("mean_hr_ppg") or 0),
-                    self._ppg_ok,
-                )
         except Exception as e:
             self._msgs_err += 1
             log.warning(f"InfluxDB enqueue error ({topic}): {e}")

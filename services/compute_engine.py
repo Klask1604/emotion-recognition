@@ -2,8 +2,11 @@
 """
 Unified compute engine: MQTT ingestion -> physiology pipeline -> state output.
 
-Replaces classifier-v2, solid-engine, and live-context with one service.
-Publishes biofizic/state, biofizic/state/live, biofizic/state/windows, and biofizic/combined.
+Publishes three MQTT topics:
+  - biofizic/state         epoch decision (1 per 30 s), retained for bootstrap
+  - biofizic/state/live    smoothed live arousal (1 Hz) for the watch UI
+  - biofizic/state/windows w30/w60/w90 HRV side-by-side (every 5 s) for the
+                           thesis window-comparison dashboard, validation only
 """
 
 from __future__ import annotations
@@ -25,10 +28,16 @@ import argparse
 
 import paho.mqtt.client as mqtt
 
-from biofizic.config import EPOCH_PUBLISH_INTERVAL_SECONDS, PRIMARY_DECISION_WINDOW_SECONDS
+from biofizic.config import (
+    EPOCH_PUBLISH_INTERVAL_SECONDS,
+    LIVE_AROUSAL_HYSTERESIS_TICKS,
+    PRIMARY_DECISION_WINDOW_SECONDS,
+    WINDOWS_PUBLISH_INTERVAL_SECONDS,
+)
+from biofizic.decision.arousal_mapper import arousal_scale_10_to_label
 from biofizic.pipeline import PhysiologyPipeline
 from biofizic.types import AcquisitionBatchMessage, MultiWindowResult, WindowResult
-from biofizic.types import IbiBatchMessage, PhysiologyDecision, SensorBatchMessage
+from biofizic.types import PhysiologyDecision
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,10 +47,6 @@ logging.basicConfig(
 log = logging.getLogger("compute_engine")
 
 MOTION_CODE = {"STILL": 0, "SCROLL": 1, "HAND": 2, "WALK": 3}
-QUADRANT_CODE = {"calm": 1, "activated": 2, "tense": 3, "depleted": 4}
-WINDOWS_PUBLISH_INTERVAL_SECONDS = 5.0
-_BEST_WINDOW_SECONDS = {"w30": 30, "w60": 60, "w90": 90}
-_LEGACY_SUPPRESS_SEC = 2.0
 
 
 def _parse_acquisition(data: dict) -> AcquisitionBatchMessage | None:
@@ -99,7 +104,13 @@ class ComputeEngineService:
         self._last_live_at = 0.0
         self._last_windows_at = 0.0
         self._last_epoch_at = 0.0
-        self._last_acquisition_at = 0.0
+        # Streak-based hysteresis for the live arousal integer. We only flip
+        # the displayed value when a different raw value has appeared for
+        # LIVE_AROUSAL_HYSTERESIS_TICKS consecutive live ticks. This kills
+        # the 1-tick alternation that median smoothing would still let through.
+        self._live_displayed_a10: int | None = None
+        self._live_candidate_a10: int | None = None
+        self._live_candidate_streak: int = 0
         self.client = mqtt.Client(
             client_id="biofizic_compute",
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
@@ -121,14 +132,11 @@ class ComputeEngineService:
             return
         topics = [
             ("biofizic/acquisition/batch", 0),
-            ("biofizic/ibi/batch", 0),
-            ("biofizic/sensors/batch", 0),
-            ("biofizic/ppg_hrv", 0),
             ("biofizic/cmd/calibrate", 1),
         ]
         for topic, qos in topics:
             client.subscribe(topic, qos=qos)
-        log.info("Compute engine active (acquisition + legacy batch topics)")
+        log.info("Compute engine active (acquisition/batch v2)")
 
     def _on_message(self, client, userdata, msg) -> None:
         try:
@@ -148,7 +156,6 @@ class ComputeEngineService:
             batch = _parse_acquisition(data)
             if batch is None:
                 return
-            self._last_acquisition_at = now
             self.pipeline.ingest_acquisition(batch)
             self._run_and_publish(
                 client,
@@ -157,39 +164,7 @@ class ComputeEngineService:
             )
             return
 
-        if now - self._last_acquisition_at < _LEGACY_SUPPRESS_SEC:
-            return
-
-        if topic == "biofizic/ibi/batch":
-            batch = IbiBatchMessage(
-                timestamp_ms=int(data.get("ts", now * 1000)),
-                intervals_ms=[int(x) for x in data.get("ibi_ms", [])],
-                timestamps_ms=[int(x) for x in data.get("ibi_ts", data.get("ibi_ts_ms", []))],
-            )
-            self.pipeline.ingest_ibi_batch(batch)
-        elif topic == "biofizic/ppg_hrv":
-            if "z_pulse_amp" in data:
-                self.pipeline.ingest_ppg_hrv(float(data["z_pulse_amp"]), now=now)
-            return
-        elif topic == "biofizic/sensors/batch":
-            batch = SensorBatchMessage(
-                timestamp_ms=int(data.get("ts", now * 1000)),
-                heart_rate_bpm=float(data.get("hr", 0)),
-                acceleration_rms=float(data.get("acc_rms", 0)),
-                acceleration_p90=float(data.get("acc_p90", 0)),
-                acceleration_std=float(data.get("acc_std", 0)),
-                gyroscope_rms=float(data.get("gyro_rms", 0)),
-                gyroscope_p90=float(data.get("gyro_p90", 0)),
-                gyroscope_std=float(data.get("gyro_std", 0)),
-                skin_temperature_c=float(data.get("skin_temp", data.get("skin_temp_c", 0))),
-                ambient_temperature_c=float(data.get("ambient_temp", data.get("ambient_temp_c", 0))),
-                display_on=bool(data.get("displayOn", data.get("display_on", True))),
-            )
-            self.pipeline.ingest_sensor_batch(batch)
-        else:
-            return
-
-        self._run_and_publish(client, now=now)
+        return
 
     def _run_and_publish(
         self,
@@ -217,8 +192,7 @@ class ComputeEngineService:
             self._publish_windows(client, result)
 
         if publish_epoch and result.decision:
-            self._publish_state(client, result.decision, live=False, result=result)
-            self._publish_combined(client, result.decision)
+            self._publish_state(client, result.decision, result=result)
 
     @staticmethod
     def _window_payload(window: WindowResult) -> dict:
@@ -254,10 +228,6 @@ class ComputeEngineService:
         multi = decision.multi_window
         sensor = self.pipeline.state.last_sensor
         window_sec = PRIMARY_DECISION_WINDOW_SECONDS
-        if result is not None:
-            window_sec = _BEST_WINDOW_SECONDS.get(result.best_window_label, window_sec)
-        elif live:
-            window_sec = 15
 
         payload = {
             "ts": int(time.time() * 1000),
@@ -268,11 +238,6 @@ class ComputeEngineService:
             "labels_agree": decision.labels_agree,
             "arousal_10": decision.display_arousal_10,
             "arousal_pct": round(decision.display_arousal_10 * 10.0, 1),
-            "valence_10": decision.valence_10,
-            "valence_label": decision.valence_label,
-            "affect_quadrant": decision.affect_quadrant,
-            "affect_quadrant_code": QUADRANT_CODE.get(decision.affect_quadrant, 0),
-            "z_pulse_amp": round(decision.z_pulse_amp, 2),
             "confidence": round(decision.motion_confidence, 3),
             "stress_index": round(decision.kubios_stress_index, 3),
             "baseline_si": round(decision.baseline_stress_index, 3),
@@ -293,12 +258,11 @@ class ComputeEngineService:
             "window_sec": window_sec,
         }
         if result is not None:
-            payload["window_used"] = result.best_window_label
+            payload["window_used"] = "w30"
             payload["data_quality"] = result.best.quality
             payload["ibi_buffer_size"] = result.ibi_buffer_size
         if multi:
             for suffix, metrics in (
-                ("w15", multi.window_15_seconds),
                 ("w30", multi.window_30_seconds),
                 ("w60", multi.window_60_seconds),
                 ("w90", multi.window_90_seconds),
@@ -312,24 +276,76 @@ class ComputeEngineService:
         decision = result.decision
         if decision:
             payload = self._decision_payload(decision, live=True, result=result)
+            self._apply_live_arousal_smoothing(payload, decision)
         else:
+            # No decision yet means we have no fresh integer arousal to publish.
+            # Reset hysteresis state so a later run does not flip from a stale
+            # value carried across the gap.
+            self._live_displayed_a10 = None
+            self._live_candidate_a10 = None
+            self._live_candidate_streak = 0
             payload = {
                 "ts": int(time.time() * 1000),
                 "live": True,
                 "engine": "compute",
-                "window_used": result.best_window_label,
+                "window_used": "w30",
                 "data_quality": result.best.quality,
                 "ibi_buffer_size": result.ibi_buffer_size,
                 "motion_class": result.motion_class,
                 "baseline_ready": result.baseline_ready,
                 "arousal_10": None,
-                "valence_10": None,
                 "stress_index": None,
                 "rmssd": None,
                 "mean_hr": None,
-                "window_sec": _BEST_WINDOW_SECONDS.get(result.best_window_label, 30),
+                "window_sec": PRIMARY_DECISION_WINDOW_SECONDS,
             }
         client.publish("biofizic/state/live", json.dumps(payload), qos=0)
+
+    def _apply_live_arousal_smoothing(
+        self, payload: dict, decision: PhysiologyDecision
+    ) -> None:
+        """
+        Apply streak-based hysteresis to the integer arousal_10 reported on
+        biofizic/state/live.
+
+        The pipeline recomputes Kubios SI every second on a rolling 30 s buffer.
+        A single new IBI can shift SI just enough to cross a zone boundary,
+        which flips the rounded arousal_10 by one. Without hysteresis the watch
+        UI alternates 2-3-2-3 every second even when the underlying signal is
+        stable. We only adopt a new displayed integer after it has been seen
+        for LIVE_AROUSAL_HYSTERESIS_TICKS consecutive ticks; otherwise we keep
+        the previous one. The label is recomputed from the displayed integer so
+        the text on the watch stays consistent with the number.
+        """
+        raw_a10 = int(decision.display_arousal_10)
+        displayed = self._update_live_arousal_hysteresis(raw_a10)
+        payload["arousal_10"] = displayed
+        payload["arousal_pct"] = round(displayed * 10.0, 1)
+        payload["emotion"] = arousal_scale_10_to_label(displayed)
+        # Keep the unsmoothed value visible for Grafana and debugging so we
+        # can see when the hysteresis is hiding a real transition.
+        payload["arousal_10_raw"] = raw_a10
+
+    def _update_live_arousal_hysteresis(self, raw_a10: int) -> int:
+        if self._live_displayed_a10 is None:
+            self._live_displayed_a10 = raw_a10
+            self._live_candidate_a10 = None
+            self._live_candidate_streak = 0
+            return raw_a10
+        if raw_a10 == self._live_displayed_a10:
+            self._live_candidate_a10 = None
+            self._live_candidate_streak = 0
+            return self._live_displayed_a10
+        if raw_a10 == self._live_candidate_a10:
+            self._live_candidate_streak += 1
+        else:
+            self._live_candidate_a10 = raw_a10
+            self._live_candidate_streak = 1
+        if self._live_candidate_streak >= LIVE_AROUSAL_HYSTERESIS_TICKS:
+            self._live_displayed_a10 = raw_a10
+            self._live_candidate_a10 = None
+            self._live_candidate_streak = 0
+        return self._live_displayed_a10
 
     def _publish_windows(self, client, result: MultiWindowResult) -> None:
         payload = {
@@ -350,38 +366,15 @@ class ComputeEngineService:
         client,
         decision: PhysiologyDecision,
         *,
-        live: bool,
         result: MultiWindowResult | None = None,
     ) -> None:
-        payload = self._decision_payload(decision, live=live, result=result)
-        topic = "biofizic/state/live" if live else "biofizic/state"
-        client.publish(topic, json.dumps(payload), qos=1 if not live else 0)
-
-    def _publish_combined(self, client, decision: PhysiologyDecision) -> None:
-        """Watch-facing combined view (replaces fusion service)."""
-        sensor = self.pipeline.state.last_sensor
-        payload = {
-            "ts": int(time.time() * 1000),
-            "engine": "compute",
-            "emotion": decision.display_label,
-            "emotion_baseline": decision.baseline_label,
-            "labels_agree": decision.labels_agree,
-            "arousal_10": decision.display_arousal_10,
-            "valence_10": decision.valence_10,
-            "valence_label": decision.valence_label,
-            "affect_quadrant": decision.affect_quadrant,
-            "affect_quadrant_code": QUADRANT_CODE.get(decision.affect_quadrant, 0),
-            "z_pulse_amp": round(decision.z_pulse_amp, 2),
-            "confidence": round(decision.motion_confidence, 3),
-            "hr": int(round(decision.mean_heart_rate_bpm)),
-            "rmssd": round(decision.rmssd_ms, 1),
-            "stress_index": round(decision.kubios_stress_index, 3),
-            "acc_rms": round(sensor.acceleration_rms, 3) if sensor else 0.0,
-            "motion_class": decision.motion_class,
-            "activity_mode": decision.activity_mode,
-            "profile_ready": decision.baseline_ready,
-        }
-        client.publish("biofizic/combined", json.dumps(payload), qos=1, retain=True)
+        """
+        Publish the epoch decision (every 30 s) on biofizic/state. The message
+        is retained so a watch reconnecting between epochs can bootstrap from
+        the last known decision without waiting up to 30 s for the next one.
+        """
+        payload = self._decision_payload(decision, live=False, result=result)
+        client.publish("biofizic/state", json.dumps(payload), qos=1, retain=True)
 
     def _publish_calibration(self, client, message: str) -> None:
         payload = {
