@@ -1,0 +1,15 @@
+apiVersion: 1
+
+datasources:
+  - name: Biofizic InfluxDB
+    uid: biofizic-influx
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8181
+    isDefault: true
+    jsonData:
+      version: SQL
+      dbName: biofizic
+      insecureGrpc: true
+      tlsSkipVerify: true
+    editable: true

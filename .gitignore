@@ -1,0 +1,45 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Secrets and local env
+.env
+
+# Runtime state (per-user calibration)
+data/*.json
+!data/.gitkeep
+
+# Large datasets (download locally, see README)
+wesad/
+datasets/
+
+# ML artifacts (regenerate with train/)
+*.joblib
+models/*.json
+
+# Evaluation and session dumps
+eval_results/
+
+# Debug plots
+tools/*.png
+
+# CSV exports
+*.csv
+
+# IDE
+.cursor/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker local overrides
+docker-compose.override.yml

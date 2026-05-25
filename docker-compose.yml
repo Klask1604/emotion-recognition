@@ -1,0 +1,112 @@
+name: biofizic
+
+x-python-service: &python-service
+  build: .
+  image: biofizic/python:latest
+  restart: unless-stopped
+  environment:
+    PYTHONPATH: /app
+
+services:
+  influxdb:
+    image: influxdb:3-core
+    container_name: biofizic-influxdb
+    ports:
+      - "8181:8181"
+    command:
+      - influxdb3
+      - serve
+      - --node-id=local
+      - --object-store=file
+      - --data-dir=/var/lib/influxdb3/data
+      - --plugin-dir=/var/lib/influxdb3/plugins
+      - --without-auth
+    volumes:
+      - influxdb-data:/var/lib/influxdb3
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8181/health || curl -sf http://localhost:8181/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  influxdb-init:
+    image: curlimages/curl:8.5.0
+    container_name: biofizic-influxdb-init
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    environment:
+      INFLUX_URL: http://influxdb:8181
+      INFLUX_DATABASE: ${INFLUX_DATABASE:-biofizic}
+    volumes:
+      - ./docker/influxdb/init-database.sh:/init-database.sh:ro
+    entrypoint: ["/bin/sh", "/init-database.sh"]
+    restart: "no"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: biofizic-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  compute-engine:
+    <<: *python-service
+    container_name: biofizic-compute-engine
+    command:
+      - python
+      - services/compute_engine.py
+      - --broker
+      - ${MQTT_BROKER:-paxbespoke.automateflow.ro}
+      - --port
+      - "${MQTT_PORT:-1883}"
+    volumes:
+      - ./data:/data
+
+  ppg-processor:
+    <<: *python-service
+    container_name: biofizic-ppg-processor
+    command:
+      - python
+      - services/ppg_processor.py
+      - --broker
+      - ${MQTT_BROKER:-paxbespoke.automateflow.ro}
+      - --port
+      - "${MQTT_PORT:-1883}"
+
+
+  mqtt-logger:
+    <<: *python-service
+    container_name: biofizic-mqtt-logger
+    command:
+      - python
+      - services/mqtt_logger.py
+      - --broker
+      - ${MQTT_BROKER:-paxbespoke.automateflow.ro}
+      - --port
+      - "${MQTT_PORT:-1883}"
+      - --url
+      - ${INFLUX_URL:-http://influxdb:8181}
+      - --database
+      - ${INFLUX_DATABASE:-biofizic}
+    depends_on:
+      influxdb:
+        condition: service_healthy
+      influxdb-init:
+        condition: service_completed_successfully
+
+volumes:
+  influxdb-data:
+  grafana-data:

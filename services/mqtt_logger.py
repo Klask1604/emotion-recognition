@@ -1,0 +1,328 @@
+#!/usr/bin/env python3
+"""
+MQTT to InfluxDB 3 Core logger.
+Subscribes to biofizic topics and writes measurements to local InfluxDB 3 Core.
+
+Usage:
+    pip install influxdb-client paho-mqtt
+    python mqtt_logger.py
+    python mqtt_logger.py --url http://localhost:8181 --database biofizic
+"""
+
+import sys
+from pathlib import Path
+
+_sys_root = Path(__file__).resolve().parents[1]
+if str(_sys_root) not in sys.path:
+    sys.path.insert(0, str(_sys_root))
+
+import biofizic._bootstrap  # noqa: F401
+import argparse
+import json
+import logging
+from datetime import datetime, timezone
+
+import paho.mqtt.client as mqtt
+from influxdb_client import InfluxDBClient, Point
+from influxdb_client.client.write_api import ASYNCHRONOUS
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
+log = logging.getLogger("mqtt_logger")
+
+# ── Configurare topicuri → campuri InfluxDB ────────────────────────────────────
+
+# Campuri numerice per topic (measurement = topic cu / → _)
+FLOAT_FIELDS: dict[str, list[str]] = {
+    "biofizic/epoch": [
+        "mean_hr", "rmssd", "acc_rms", "ibi_n",
+        "sdnn", "pnn50", "mean_ibi", "window_sec", "hr",
+    ],
+    "biofizic/ppg_hrv": [
+        "rmssd_ppg", "mean_hr_ppg", "sdnn_ppg", "pnn50_ppg",
+        "mean_ibi_ppg", "ibi_n_ppg", "peak_count",
+        "pulse_amp_mean", "pulse_amp_std", "z_pulse_amp",
+    ],
+    "biofizic/state": [
+        "arousal_10", "arousal_pct", "valence_10", "mean_hr", "rmssd", "stress_index",
+        "baseline_si", "z_si", "z_pulse_amp", "motion_conf", "rmssd_w15", "rmssd_w30",
+        "rmssd_w60", "rmssd_w90", "stress_index_w15", "stress_index_w30",
+        "stress_index_w60", "stress_index_w90", "window_sec",
+    ],
+    "biofizic/state/live": [
+        "arousal_10", "arousal_pct", "valence_10", "mean_hr", "rmssd", "stress_index",
+        "baseline_si", "z_si", "z_pulse_amp", "motion_conf", "window_sec",
+    ],
+    "biofizic/emotion/confirmed": [
+        "confidence", "rmssd", "mean_hr", "acc_rms",
+        "warmup_pct", "ibi_n", "z_pulse_amp",
+    ],
+    "biofizic/combined": [
+        "arousal_10", "valence_10", "confidence",
+        "hr", "rmssd", "stress_index", "z_pulse_amp", "acc_rms",
+    ],
+}
+
+# Campuri string salvate ca tag-uri InfluxDB (pentru filtrare si colorare Grafana)
+TAG_FIELDS: dict[str, list[str]] = {
+    "biofizic/state": [
+        "emotion", "emotion_baseline", "activity_mode", "motion_class", "why",
+        "valence_label", "affect_quadrant",
+    ],
+    "biofizic/state/live": [
+        "emotion", "activity_mode", "motion_class",
+        "valence_label", "affect_quadrant",
+    ],
+    "biofizic/emotion/confirmed": [
+        "emotion",
+    ],
+    "biofizic/combined": [
+        "emotion", "emotion_baseline", "motion_class", "activity_mode",
+        "valence_label", "affect_quadrant",
+    ],
+}
+
+# Campuri booleane convertite la 0/1 pentru grafice
+BOOL_FIELDS: dict[str, list[str]] = {
+    "biofizic/emotion/confirmed": ["calibrated"],
+    "biofizic/state": [
+        "context_suppress_alert",
+        "context_rest_like",
+        "motion_gated",
+        "baseline_slow_ready",
+        "profile_ready",
+        "session_baseline_ready",
+        "labels_agree",
+        "signal_trustworthy",
+        "stale",
+        "held",
+    ],
+    "biofizic/state/live": [
+        "live", "motion_gated", "profile_ready",
+        "context_suppress_alert", "context_rest_like",
+    ],
+}
+
+ALL_TOPICS = list(FLOAT_FIELDS.keys()) + [
+    "biofizic/ibi/batch",
+    "biofizic/ppg/batch",
+    "biofizic/sensors/batch",
+    "biofizic/acc/live",
+    "biofizic/hr/live",
+    "biofizic/watch/live",
+    "biofizic/ppg_pipeline",
+]
+
+# QoS 1 pentru epoci rare (30s) — supraviețuiesc reconnect-urilor MQTT
+TOPIC_QOS: dict[str, int] = {
+    "biofizic/ppg_hrv": 1,
+    "biofizic/epoch": 1,
+    "biofizic/state": 1,
+    "biofizic/combined": 1,
+}
+
+MQTT_KEEPALIVE_SEC = 120
+
+FLOAT_FIELDS.update({
+    "biofizic/ibi/batch": [],
+    "biofizic/ppg/batch": [],
+    "biofizic/sensors/batch": [
+        "hr", "acc_rms", "acc_p90", "acc_std", "gyro_rms", "gyro_p90", "gyro_std",
+        "skin_temp", "ambient_temp",
+    ],
+    "biofizic/ppg_pipeline": [
+        "rmssd_ppg", "mean_hr_ppg", "peak_count", "pulse_amp_mean", "z_pulse_amp",
+        "snr_estimate",
+        "buffer_span_sec", "buffer_samples", "samples_in_batch", "green_mean",
+        "acc_rms", "batches_total",
+    ],
+    "biofizic/acc/live": ["acc_rms", "sma_g"],
+    "biofizic/hr/live": ["hr", "status"],
+    "biofizic/context/live": [
+        "activity_confidence", "acc_window_median", "acc_window_p90",
+        "acc_rms_live", "hr_live", "motion_z", "gmm_active_threshold",
+    ],
+    "biofizic/watch/live": [
+        "hr", "hr_status", "acc_rms", "acc_mag", "gyro_rms",
+        "skin_temp_c", "ambient_temp_c",
+        "ppg_n", "ppg_green_mean", "ppg_green_std", "ppg_ir_mean", "ppg_red_mean",
+        "steps", "ibi_n", "ibi_window_sec", "sec_since_ibi",
+        "rmssd_live", "sdnn_live", "mean_hr_live", "mean_ibi_live", "pnn50_live",
+        "arousal_fused", "arousal_10", "confidence",
+        "server_arousal_10", "server_motion_z", "server_z_hr",
+    ],
+})
+
+TAG_FIELDS.update({
+    "biofizic/context/live": ["activity_mode", "motion_baseline_source"],
+    "biofizic/ppg_pipeline": ["skip_reason", "activity_mode"],
+    "biofizic/watch/live": [
+        "emotion", "server_emotion", "server_activity_mode",
+    ],
+})
+
+BOOL_FIELDS.update({
+    "biofizic/combined": ["labels_agree"],
+    "biofizic/context/live": ["context_suppress_alert", "context_rest_like", "motion_gate", "hrv_gate"],
+    "biofizic/ppg_pipeline": ["motion_blocked", "epoch_skipped"],
+    "biofizic/watch/live": [
+        "live", "display_on", "mqtt_connected", "hrv_ready", "profile_ready", "signal_ok",
+    ],
+})
+
+
+def topic_to_measurement(topic: str) -> str:
+    return topic.replace("/", "_")
+
+
+class MqttInfluxLogger:
+
+    def __init__(self, broker: str, broker_port: int,
+                 influx_url: str, influx_database: str):
+
+        self.bucket    = influx_database
+        self._msgs_ok  = 0
+        self._msgs_err = 0
+        self._ppg_ok   = 0
+
+        # InfluxDB 3 Core: token="ignored", org="ignored", bucket=database name
+        self._influx = InfluxDBClient(
+            url=influx_url, token="ignored", org="ignored"
+        )
+        self.write_api = self._influx.write_api(
+            write_options=ASYNCHRONOUS,
+            success_callback=self._on_write_ok,
+            error_callback=self._on_write_err,
+        )
+        log.info(f"InfluxDB 3 Core: {influx_url}  database={influx_database} (async writes)")
+
+        import uuid
+        self.client = mqtt.Client(
+            client_id=f"biofizic_influx_logger_{uuid.uuid4().hex[:8]}",
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+        )
+        self.client.on_connect    = self._on_connect
+        self.client.on_message    = self._on_message
+        self.client.on_disconnect = self._on_disconnect
+        self.client.reconnect_delay_set(min_delay=1, max_delay=15)
+        self.broker       = broker
+        self.broker_port  = broker_port
+
+    def _on_write_ok(self, conf, data: str) -> None:
+        self._msgs_ok += 1
+        if self._msgs_ok % 50 == 0:
+            log.info(
+                "Scris %d puncte InfluxDB (%d erori, ppg_hrv=%d)",
+                self._msgs_ok, self._msgs_err, self._ppg_ok,
+            )
+
+    def _on_write_err(self, conf, data: str, exception: Exception) -> None:
+        self._msgs_err += 1
+        log.warning("InfluxDB write error: %s", exception)
+
+    def start(self) -> None:
+        log.info(f"Conectare MQTT {self.broker}:{self.broker_port}")
+        self.client.connect(self.broker, self.broker_port, keepalive=MQTT_KEEPALIVE_SEC)
+        try:
+            self.client.loop_forever()
+        finally:
+            self.write_api.close()
+            self._influx.close()
+
+    def _on_connect(self, client, userdata, flags, rc, props=None):
+        if rc == 0:
+            for t in ALL_TOPICS:
+                client.subscribe(t, qos=TOPIC_QOS.get(t, 0))
+            log.info(f"MQTT conectat — subscris la {len(ALL_TOPICS)} topicuri")
+        else:
+            log.error(f"MQTT connect failed rc={rc}")
+
+    def _on_disconnect(self, client, userdata, flags, rc, props=None):
+        log.warning(f"MQTT deconectat (rc={rc})")
+
+    def _on_message(self, client, userdata, msg):
+        try:
+            data = json.loads(msg.payload.decode("utf-8", errors="replace"))
+        except Exception:
+            self._msgs_err += 1
+            return
+
+        topic = msg.topic
+        measurement = topic_to_measurement(topic)
+
+        # Timestamp din payload daca exista, altfel now
+        ts_ms = data.get("ts")
+        if ts_ms and isinstance(ts_ms, (int, float)) and ts_ms > 1e12:
+            dt = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+        else:
+            dt = datetime.now(timezone.utc)
+
+        point = Point(measurement).time(dt)
+
+        written = 0
+
+        # Campuri numerice
+        for field in FLOAT_FIELDS.get(topic, []):
+            val = data.get(field)
+            if val is not None:
+                try:
+                    point.field(field, float(val))
+                    written += 1
+                except (TypeError, ValueError):
+                    pass
+
+        # Tag-uri string
+        for field in TAG_FIELDS.get(topic, []):
+            val = data.get(field)
+            if val is not None:
+                point.tag(field, str(val))
+
+        # Campuri booleane → 0/1
+        for field in BOOL_FIELDS.get(topic, []):
+            val = data.get(field)
+            if val is not None:
+                point.field(field, 1.0 if val else 0.0)
+                written += 1
+
+        if written == 0:
+            return
+
+        try:
+            self.write_api.write(bucket=self.bucket, record=point)
+            if topic == "biofizic/ppg_hrv":
+                self._ppg_ok += 1
+                log.info(
+                    "ppg_hrv -> Influx rmssd=%.1f hr=%.0f (#%d)",
+                    float(data.get("rmssd_ppg") or 0),
+                    float(data.get("mean_hr_ppg") or 0),
+                    self._ppg_ok,
+                )
+        except Exception as e:
+            self._msgs_err += 1
+            log.warning(f"InfluxDB enqueue error ({topic}): {e}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="MQTT → InfluxDB 3 Core logger pentru Biofizic")
+    parser.add_argument("--broker",   default="paxbespoke.automateflow.ro")
+    parser.add_argument("--port",     type=int, default=1883)
+    parser.add_argument("--url",      default="http://localhost:8181",
+                        help="InfluxDB 3 Core URL (default: http://localhost:8181)")
+    parser.add_argument("--database", default="biofizic",
+                        help="Numele database-ului InfluxDB 3 (default: biofizic)")
+    args = parser.parse_args()
+
+    logger = MqttInfluxLogger(
+        broker=args.broker,
+        broker_port=args.port,
+        influx_url=args.url,
+        influx_database=args.database,
+    )
+    logger.start()
+
+
+if __name__ == "__main__":
+    main()
