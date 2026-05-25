@@ -1,4 +1,5 @@
 {
+  "id": null,
   "uid": "biofizic-baseline-compare",
   "title": "Biofizic Baseline Compare",
   "tags": [
@@ -7,7 +8,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "refresh": "5s",
   "panels": [
     {

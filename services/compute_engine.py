@@ -37,6 +37,7 @@ logging.basicConfig(
 log = logging.getLogger("compute_engine")
 
 MOTION_CODE = {"STILL": 0, "SCROLL": 1, "HAND": 2, "WALK": 3}
+QUADRANT_CODE = {"calm": 1, "activated": 2, "tense": 3, "depleted": 4}
 
 
 class ComputeEngineService:
@@ -188,6 +189,7 @@ class ComputeEngineService:
             "valence_10": decision.valence_10,
             "valence_label": decision.valence_label,
             "affect_quadrant": decision.affect_quadrant,
+            "affect_quadrant_code": QUADRANT_CODE.get(decision.affect_quadrant, 0),
             "z_pulse_amp": round(decision.z_pulse_amp, 2),
             "confidence": round(decision.motion_confidence, 3),
             "stress_index": round(decision.kubios_stress_index, 3),
@@ -238,6 +240,7 @@ class ComputeEngineService:
             "valence_10": decision.valence_10,
             "valence_label": decision.valence_label,
             "affect_quadrant": decision.affect_quadrant,
+            "affect_quadrant_code": QUADRANT_CODE.get(decision.affect_quadrant, 0),
             "z_pulse_amp": round(decision.z_pulse_amp, 2),
             "confidence": round(decision.motion_confidence, 3),
             "hr": int(round(decision.mean_heart_rate_bpm)),

@@ -5,9 +5,9 @@ providers:
     orgId: 1
     folder: Biofizic
     type: file
-    disableDeletion: false
-    updateIntervalSeconds: 30
-    allowUiUpdates: true
+    disableDeletion: true
+    updateIntervalSeconds: 60
+    allowUiUpdates: false
     options:
       path: /etc/grafana/provisioning/dashboards
       foldersFromFilesStructure: false

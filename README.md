@@ -1,87 +1,145 @@
-# Biofizic — physiological monitoring (thesis)
+# Biofizic — server & compute pipeline
 
-Galaxy Watch 7 acquisition + Python compute server + Grafana.
+Python backend for wrist-based physiological monitoring: MQTT ingestion, HRV analysis, affect heuristics, and Grafana dashboards.
 
-## Architecture
+Companion Android app (sensor acquisition): [biofizic-android](https://github.com/YOUR_USER/biofizic) — replace with your repo URL.
 
-```
-Watch (acquisition only)
-  biofizic/ibi/batch, ppg/batch, sensors/batch @ 1 Hz
-  biofizic/epoch @ 30s (legacy compat)
-       |
-       v
-  compute-engine (services/compute_engine.py)
-  Rolling buffers -> HRV 15/30/60/90s -> baseline -> HAR -> valence -> decision
-       |
-       +--> biofizic/state, biofizic/state/live, biofizic/combined
-       v
-mqtt-logger -> InfluxDB -> Grafana
-```
-
-## Project layout
+## What it does
 
 ```
-Licenta/
-├── biofizic/
-│   ├── constants/       # HRV, Kubios zones, motion caps
-│   ├── signal/          # IBI cleaning
-│   ├── features/        # HRV metrics
-│   ├── windows/         # Multi-window 15/30/60/90s
-│   ├── baseline/        # RestBaselineStore (never reset on motion)
-│   ├── decision/        # Alert gate, labels, HAR fusion, valence
-│   ├── pipeline/        # PhysiologyPipeline
-│   └── motion/          # HAR model (WISDM)
-├── services/
-│   ├── compute_engine.py
-│   ├── ppg_processor.py
-│   └── mqtt_logger.py
-├── train/               # WESAD, WISDM training
-├── eval_results/        # Gate reports (JSON)
-├── docs/                # Technical report, ML eval, architecture
-└── docker/              # Grafana + Influx provisioning
+Galaxy Watch (Android app)
+  → MQTT: ibi/batch, ppg/batch, sensors/batch @ 1 Hz
+       ↓
+compute-engine     → HRV 15/30/60/90 s, personal baseline, HAR, arousal + valence
+ppg-processor      → PPG DSP, z_pulse_amp (sympathetic proxy)
+mqtt-logger        → InfluxDB 3
+Grafana            → session dashboards
+       ↓
+Watch UI ← biofizic/combined (arousal, valence, emotion label)
 ```
 
-Legacy code moved to `Desktop/licenta_archived/`.
+**Production path:** all decisions run in `services/compute_engine.py` → `biofizic/pipeline/PhysiologyPipeline`. There is no separate fusion or ML emotion service in the default stack.
+
+### Outputs (30 s epoch)
+
+| Field | Meaning |
+|-------|---------|
+| `arousal_10` | Kubios stress index → 1–10, capped by motion HAR + alert gate |
+| `emotion` | Display label (Relaxat … Ridicat) from arousal |
+| `valence_10` | Heuristic 1–10 from RMSSD z + PPG pulse amplitude z |
+| `affect_quadrant` | calm / activated / tense / depleted |
+| `labels_agree` | Kubios zone label vs personal baseline z-label |
+
+See [docs/architecture.md](docs/architecture.md) for formulas and MQTT topics.
+
+## Repository layout
+
+```
+biofizic/           Core library (signal, HRV, baseline, decision, motion HAR, pipeline)
+services/           Docker entrypoints (compute_engine, ppg_processor, mqtt_logger)
+train/              Offline training (WISDM HAR, optional WESAD)
+scripts/            Grafana dashboard generator, reports
+docker/             InfluxDB + Grafana provisioning
+models/             Local .joblib artifacts (not committed — see models/README.md)
+data/               Per-user baseline JSON (gitignored)
+```
+
+## Requirements
+
+- Docker & Docker Compose
+- Python 3.11+ (for local scripts / training)
+- An MQTT broker reachable from watch and server
+- Samsung Galaxy Watch with Health SDK (see Android repo)
 
 ## Quick start
 
+1. Copy environment template and set your broker/database:
+
 ```bash
 cp .env.example .env
-docker compose build
-docker compose up -d
-python scripts/generate_grafana_dashboards.py
-python scripts/generate_ml_evaluation_report.py
+# Edit MQTT_BROKER, MQTT_PORT, INFLUX_DATABASE, Grafana credentials
 ```
 
-Grafana: http://localhost:3000 (admin/admin)
+2. Build and run (5 services: compute-engine, ppg-processor, mqtt-logger, influxdb, grafana):
 
-Dashboards:
-- `biofizic-live-overview`
-- `biofizic-hrv-analysis`
-- `biofizic-baseline-compare`
-- `biofizic-ppg-pipeline`
-- `biofizic-motion-har`
-- `biofizic-affect-classification`
-- `biofizic-session-overview`
+```bash
+docker compose build
+docker compose up -d
+```
 
-## Datasets (local only, not in Git)
+3. Regenerate Grafana dashboards after code changes:
 
-- `wesad/` — WESAD for emotion training (~17 GB)
-- `datasets/wisdm/extracted/` — WISDM for HAR
+```bash
+python scripts/generate_grafana_dashboards.py
+docker compose restart grafana
+```
 
-Train models:
+4. Open Grafana at `http://localhost:3000` (default admin credentials from `.env`).
+
+### Fix duplicate Grafana dashboards
+
+Duplicates usually come from the Grafana data volume keeping old UI copies while file provisioning re-imports.
+
+```bash
+docker compose stop grafana
+docker volume rm biofizic_grafana-data   # name may be <project>_grafana-data
+docker compose up -d grafana
+```
+
+Provisioning is configured with `allowUiUpdates: false` so file UIDs stay authoritative.
+
+## MQTT topics (summary)
+
+**Watch → server:** `biofizic/ibi/batch`, `biofizic/ppg/batch`, `biofizic/sensors/batch`  
+**Server → watch:** `biofizic/state`, `biofizic/state/live`, `biofizic/combined`  
+**PPG side path:** `biofizic/ppg_hrv` (feeds valence via `z_pulse_amp`)
+
+Full list: [docs/architecture.md](docs/architecture.md).
+
+## Models & datasets (local only)
+
+Not in Git (see `.gitignore`):
+
+| Path | Purpose |
+|------|---------|
+| `models/motion_har_wisdm.joblib` | HAR classifier (required) |
+| `datasets/wisdm/` | WISDM training data |
+| `wesad/` | Optional emotion dataset (~17 GB) |
+| `eval_results/` | ML gate reports |
 
 ```bash
 python train/train_wisdm_har.py
-python train/train_wesad_epoch.py
 ```
 
-## Watch app
+## Development
 
-Separate repo: `AndroidStudioProjects/biofizic`
+```bash
+python -m venv .venv && source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+pip install -r requirements.txt
+python services/compute_engine.py --broker localhost --port 1883
+```
 
-Publishes acquisition batches at 1 Hz. HRV is computed on the server only.
+Human-readable decision logs when running compute-engine:
 
-## ML policy
+```
+[PHYSIO] activation_level=6/10 (Moderat) | heart_rate=78bpm | rmssd=42ms ...
+[AFFECT] valence=6/10 (neutral) | quadrant=calm | z_pulse_amp=+0.2
+```
 
-Models deploy only if LOSO gate passes (`eval_results/*.json`). Otherwise deterministic Kubios physiology is used. See `docs/ml_evaluation_report.md`.
+## Grafana dashboards
+
+| UID | Purpose |
+|-----|---------|
+| `biofizic-live-overview` | Arousal + valence from `biofizic_state` |
+| `biofizic-hrv-analysis` | Multi-window RMSSD / stress index |
+| `biofizic-baseline-compare` | Kubios vs personal baseline |
+| `biofizic-affect-classification` | 2D affect axes + quadrants |
+| `biofizic-session-overview` | Full session timeline |
+| `biofizic-ppg-pipeline` | Raw PPG reception + motion gate |
+| `biofizic-motion-har` | HAR class + acceleration |
+
+Queries use **`biofizic_state`** for affect fields. The legacy `biofizic_combined` table may still contain old fusion-era columns (`arousal_fused`, `systems_agree`, etc.) until new compute-engine data overwrites the schema.
+
+## License / thesis context
+
+Bachelor thesis project — physiological monitoring for VR/wellness research. ML emotion classifier (WESAD) is optional and gated; default production uses deterministic Kubios + heuristics.

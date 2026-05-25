@@ -1,4 +1,5 @@
 {
+  "id": null,
   "uid": "biofizic-live-overview",
   "title": "Biofizic Live Overview",
   "tags": [
@@ -7,7 +8,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "refresh": "5s",
   "panels": [
     {
@@ -34,7 +35,7 @@
           "format": "table",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT arousal_10 AS v FROM biofizic_combined WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT arousal_10 AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -94,7 +95,7 @@
           "format": "table",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT valence_10 AS v FROM biofizic_combined WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT valence_10 AS v FROM biofizic_state WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -154,7 +155,7 @@
           "format": "table",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT affect_quadrant AS v FROM biofizic_combined WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT CASE   WHEN arousal_10 >= 6 AND valence_10 >= 6 THEN 'activated'   WHEN arousal_10 >= 6 AND valence_10 < 6 THEN 'tense'   WHEN arousal_10 < 6 AND valence_10 >= 6 THEN 'calm'   ELSE 'depleted' END AS v FROM biofizic_state WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -192,7 +193,7 @@
     },
     {
       "id": 4,
-      "title": "Combined arousal and valence",
+      "title": "Arousal and valence (state)",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -214,7 +215,7 @@
           "format": "time_series",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT time, arousal_10, valence_10 FROM biofizic_combined WHERE $__timeFilter(time) ORDER BY time",
+          "rawSql": "SELECT time, arousal_10, valence_10 FROM biofizic_state WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time",
           "refId": "A"
         }
       ],

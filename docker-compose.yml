@@ -69,7 +69,7 @@ services:
       - python
       - services/compute_engine.py
       - --broker
-      - ${MQTT_BROKER:-paxbespoke.automateflow.ro}
+      - ${MQTT_BROKER:-localhost}
       - --port
       - "${MQTT_PORT:-1883}"
     volumes:
@@ -82,7 +82,7 @@ services:
       - python
       - services/ppg_processor.py
       - --broker
-      - ${MQTT_BROKER:-paxbespoke.automateflow.ro}
+      - ${MQTT_BROKER:-localhost}
       - --port
       - "${MQTT_PORT:-1883}"
 
@@ -94,7 +94,7 @@ services:
       - python
       - services/mqtt_logger.py
       - --broker
-      - ${MQTT_BROKER:-paxbespoke.automateflow.ro}
+      - ${MQTT_BROKER:-localhost}
       - --port
       - "${MQTT_PORT:-1883}"
       - --url

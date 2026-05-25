@@ -1,4 +1,5 @@
 {
+  "id": null,
   "uid": "biofizic-affect-classification",
   "title": "Biofizic Affect Classification",
   "tags": [
@@ -7,7 +8,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 3,
   "refresh": "5s",
   "panels": [
     {
@@ -34,7 +35,7 @@
           "format": "table",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT affect_quadrant AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT CASE   WHEN arousal_10 >= 6 AND valence_10 >= 6 THEN 'activated'   WHEN arousal_10 >= 6 AND valence_10 < 6 THEN 'tense'   WHEN arousal_10 < 6 AND valence_10 >= 6 THEN 'calm'   ELSE 'depleted' END AS v FROM biofizic_state WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -154,7 +155,7 @@
           "format": "table",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT valence_label AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT CASE   WHEN valence_10 <= 3 THEN 'negative'   WHEN valence_10 <= 6 THEN 'neutral'   ELSE 'positive' END AS v FROM biofizic_state WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
@@ -214,7 +215,7 @@
           "format": "time_series",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT time, arousal_10, valence_10 FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
+          "rawSql": "SELECT time, arousal_10, valence_10 FROM biofizic_state WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time",
           "refId": "A"
         }
       ],
@@ -273,7 +274,7 @@
           "format": "table",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT time, affect_quadrant FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
+          "rawSql": "SELECT time, CASE   WHEN arousal_10 >= 6 AND valence_10 >= 6 THEN 'activated'   WHEN arousal_10 >= 6 AND valence_10 < 6 THEN 'tense'   WHEN arousal_10 < 6 AND valence_10 >= 6 THEN 'calm'   ELSE 'depleted' END AS affect_quadrant FROM biofizic_state WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time",
           "refId": "A"
         }
       ],
@@ -321,7 +322,7 @@
           "format": "table",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT time, emotion, valence_label FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
+          "rawSql": "SELECT time, emotion, CASE   WHEN valence_10 <= 3 THEN 'negative'   WHEN valence_10 <= 6 THEN 'neutral'   ELSE 'positive' END AS valence_label FROM biofizic_state WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time",
           "refId": "A"
         }
       ],

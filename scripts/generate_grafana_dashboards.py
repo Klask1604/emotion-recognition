@@ -23,6 +23,48 @@ CASE {col}
 END
 """.strip()
 
+# Derive Russell quadrant from numeric axes (FlightSQL has no tag columns until data exists).
+AFFECT_QUADRANT_SQL = """
+CASE
+  WHEN arousal_10 >= 6 AND valence_10 >= 6 THEN 'activated'
+  WHEN arousal_10 >= 6 AND valence_10 < 6 THEN 'tense'
+  WHEN arousal_10 < 6 AND valence_10 >= 6 THEN 'calm'
+  ELSE 'depleted'
+END
+""".strip()
+
+VALENCE_LABEL_SQL = """
+CASE
+  WHEN valence_10 <= 3 THEN 'negative'
+  WHEN valence_10 <= 6 THEN 'neutral'
+  ELSE 'positive'
+END
+""".strip()
+
+AFFECT_QUADRANT_CODE_SQL = """
+CASE
+  WHEN arousal_10 >= 6 AND valence_10 >= 6 THEN 2
+  WHEN arousal_10 >= 6 AND valence_10 < 6 THEN 3
+  WHEN arousal_10 < 6 AND valence_10 >= 6 THEN 1
+  ELSE 4
+END
+""".strip()
+
+
+def dashboard_meta(uid: str, title: str, tags: list[str], panels: list, *, version: int = 1) -> dict:
+    """Standard dashboard envelope; id=null lets Grafana assign stable identity by uid."""
+    return {
+        "id": None,
+        "uid": uid,
+        "title": title,
+        "tags": tags,
+        "timezone": "browser",
+        "schemaVersion": 39,
+        "version": version,
+        "refresh": "5s",
+        "panels": panels,
+    }
+
 
 def ds_target(sql: str, ref: str = "A", fmt: str = "time_series") -> dict:
     return {
@@ -227,16 +269,7 @@ def build_hrv_dashboard() -> dict:
             unit="none",
         ),
     ]
-    return {
-        "uid": "biofizic-hrv-analysis",
-        "title": "Biofizic HRV Analysis",
-        "tags": ["biofizic", "hrv"],
-        "timezone": "browser",
-        "schemaVersion": 39,
-        "version": 2,
-        "refresh": "5s",
-        "panels": panels,
-    }
+    return dashboard_meta("biofizic-hrv-analysis", "Biofizic HRV Analysis", ["biofizic", "hrv"], panels, version=3)
 
 
 def build_baseline_dashboard() -> dict:
@@ -286,16 +319,9 @@ def build_baseline_dashboard() -> dict:
             decimals=2,
         ),
     ]
-    return {
-        "uid": "biofizic-baseline-compare",
-        "title": "Biofizic Baseline Compare",
-        "tags": ["biofizic", "baseline"],
-        "timezone": "browser",
-        "schemaVersion": 39,
-        "version": 2,
-        "refresh": "5s",
-        "panels": panels,
-    }
+    return dashboard_meta(
+        "biofizic-baseline-compare", "Biofizic Baseline Compare", ["biofizic", "baseline"], panels, version=3
+    )
 
 
 def build_ppg_dashboard() -> dict:
@@ -406,16 +432,7 @@ def build_ppg_dashboard() -> dict:
             h=7,
         ),
     ]
-    return {
-        "uid": "biofizic-ppg-pipeline",
-        "title": "Biofizic PPG Pipeline",
-        "tags": ["biofizic", "ppg"],
-        "timezone": "browser",
-        "schemaVersion": 39,
-        "version": 3,
-        "refresh": "5s",
-        "panels": panels,
-    }
+    return dashboard_meta("biofizic-ppg-pipeline", "Biofizic PPG Pipeline", ["biofizic", "ppg"], panels, version=4)
 
 
 def build_motion_dashboard() -> dict:
@@ -472,24 +489,17 @@ def build_motion_dashboard() -> dict:
             unit="accMS2",
         ),
     ]
-    return {
-        "uid": "biofizic-motion-har",
-        "title": "Biofizic Motion HAR",
-        "tags": ["biofizic", "motion"],
-        "timezone": "browser",
-        "schemaVersion": 39,
-        "version": 2,
-        "refresh": "5s",
-        "panels": panels,
-    }
+    return dashboard_meta("biofizic-motion-har", "Biofizic Motion HAR", ["biofizic", "motion"], panels, version=3)
 
 
 def build_overview_dashboard() -> dict:
+    """Live overview from biofizic_state (canonical schema). Avoid biofizic_combined legacy fusion fields."""
+    quadrant = AFFECT_QUADRANT_SQL.replace("\n", " ")
     panels = [
         stat_panel(
             1,
             "Arousal",
-            "SELECT arousal_10 AS v FROM biofizic_combined WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            "SELECT arousal_10 AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             0,
             0,
             decimals=0,
@@ -497,7 +507,8 @@ def build_overview_dashboard() -> dict:
         stat_panel(
             2,
             "Valence",
-            "SELECT valence_10 AS v FROM biofizic_combined WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            "SELECT valence_10 AS v FROM biofizic_state "
+            "WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time DESC LIMIT 1",
             6,
             0,
             decimals=0,
@@ -505,16 +516,18 @@ def build_overview_dashboard() -> dict:
         stat_panel(
             3,
             "Affect quadrant",
-            "SELECT affect_quadrant AS v FROM biofizic_combined WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            f"SELECT {quadrant} AS v FROM biofizic_state "
+            "WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time DESC LIMIT 1",
             12,
             0,
             decimals=0,
         ),
         ts_panel(
             4,
-            "Combined arousal and valence",
+            "Arousal and valence (state)",
             4,
-            "SELECT time, arousal_10, valence_10 FROM biofizic_combined WHERE $__timeFilter(time) ORDER BY time",
+            "SELECT time, arousal_10, valence_10 FROM biofizic_state "
+            "WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time",
             min_v=0,
             max_v=10,
             decimals=0,
@@ -529,24 +542,26 @@ def build_overview_dashboard() -> dict:
             ],
         ),
     ]
-    return {
-        "uid": "biofizic-live-overview",
-        "title": "Biofizic Live Overview",
-        "tags": ["biofizic", "overview"],
-        "timezone": "browser",
-        "schemaVersion": 39,
-        "version": 3,
-        "refresh": "5s",
-        "panels": panels,
-    }
+    return dashboard_meta("biofizic-live-overview", "Biofizic Live Overview", ["biofizic", "overview"], panels, version=4)
 
 
 def build_affect_dashboard() -> dict:
+    quadrant = AFFECT_QUADRANT_SQL.replace("\n", " ")
+    valence_lbl = VALENCE_LABEL_SQL.replace("\n", " ")
+    quadrant_ts = (
+        f"SELECT time, {quadrant} AS affect_quadrant FROM biofizic_state "
+        "WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time"
+    )
+    labels_ts = (
+        f"SELECT time, emotion, {valence_lbl} AS valence_label FROM biofizic_state "
+        "WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time"
+    )
     panels = [
         stat_panel(
             1,
             "Current quadrant",
-            "SELECT affect_quadrant AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            f"SELECT {quadrant} AS v FROM biofizic_state "
+            "WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time DESC LIMIT 1",
             0,
             0,
             w=8,
@@ -564,7 +579,8 @@ def build_affect_dashboard() -> dict:
         stat_panel(
             3,
             "Valence label",
-            "SELECT valence_label AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            f"SELECT {valence_lbl} AS v FROM biofizic_state "
+            "WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time DESC LIMIT 1",
             16,
             0,
             w=8,
@@ -574,7 +590,8 @@ def build_affect_dashboard() -> dict:
             4,
             "Arousal vs valence (1..10)",
             4,
-            "SELECT time, arousal_10, valence_10 FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
+            "SELECT time, arousal_10, valence_10 FROM biofizic_state "
+            "WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time",
             min_v=0,
             max_v=10,
             decimals=0,
@@ -582,28 +599,25 @@ def build_affect_dashboard() -> dict:
         timeline_panel(
             5,
             "Affect quadrant over time",
-            "SELECT time, affect_quadrant FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
+            quadrant_ts,
             12,
             h=5,
         ),
         timeline_panel(
             6,
             "Emotion and valence labels",
-            "SELECT time, emotion, valence_label FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
+            labels_ts,
             17,
             h=5,
         ),
     ]
-    return {
-        "uid": "biofizic-affect-classification",
-        "title": "Biofizic Affect Classification",
-        "tags": ["biofizic", "affect"],
-        "timezone": "browser",
-        "schemaVersion": 39,
-        "version": 1,
-        "refresh": "5s",
-        "panels": panels,
-    }
+    return dashboard_meta(
+        "biofizic-affect-classification",
+        "Biofizic Affect Classification",
+        ["biofizic", "affect"],
+        panels,
+        version=3,
+    )
 
 
 def build_session_overview_dashboard() -> dict:
@@ -645,10 +659,7 @@ def build_session_overview_dashboard() -> dict:
             5,
             "PPG pulse amplitude z",
             24,
-            "SELECT time, z_pulse_amp FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
-            extra_sql=[
-                "SELECT time, z_pulse_amp AS z_ppg FROM biofizic_ppg_hrv WHERE $__timeFilter(time) ORDER BY time",
-            ],
+            "SELECT time, z_pulse_amp FROM biofizic_ppg_hrv WHERE $__timeFilter(time) ORDER BY time",
             h=6,
             min_v=-3,
             max_v=3,
@@ -658,7 +669,8 @@ def build_session_overview_dashboard() -> dict:
             6,
             "Arousal and valence",
             30,
-            "SELECT time, arousal_10, valence_10 FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
+            "SELECT time, arousal_10, valence_10 FROM biofizic_state "
+            "WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time",
             min_v=0,
             max_v=10,
             decimals=0,
@@ -674,16 +686,9 @@ def build_session_overview_dashboard() -> dict:
             h=5,
         ),
     ]
-    return {
-        "uid": "biofizic-session-overview",
-        "title": "Biofizic Session Overview",
-        "tags": ["biofizic", "session"],
-        "timezone": "browser",
-        "schemaVersion": 39,
-        "version": 1,
-        "refresh": "5s",
-        "panels": panels,
-    }
+    return dashboard_meta(
+        "biofizic-session-overview", "Biofizic Session Overview", ["biofizic", "session"], panels, version=2
+    )
 
 
 def main() -> None:

@@ -47,7 +47,7 @@ FLOAT_FIELDS: dict[str, list[str]] = {
         "pulse_amp_mean", "pulse_amp_std", "z_pulse_amp",
     ],
     "biofizic/state": [
-        "arousal_10", "arousal_pct", "valence_10", "mean_hr", "rmssd", "stress_index",
+        "arousal_10", "arousal_pct", "valence_10", "affect_quadrant_code", "mean_hr", "rmssd", "stress_index",
         "baseline_si", "z_si", "z_pulse_amp", "motion_conf", "rmssd_w15", "rmssd_w30",
         "rmssd_w60", "rmssd_w90", "stress_index_w15", "stress_index_w30",
         "stress_index_w60", "stress_index_w90", "window_sec",
@@ -61,27 +61,31 @@ FLOAT_FIELDS: dict[str, list[str]] = {
         "warmup_pct", "ibi_n", "z_pulse_amp",
     ],
     "biofizic/combined": [
-        "arousal_10", "valence_10", "confidence",
+        "arousal_10", "valence_10", "affect_quadrant_code", "confidence",
         "hr", "rmssd", "stress_index", "z_pulse_amp", "acc_rms",
     ],
+}
+
+# String fields (FlightSQL queryable; tags alone may not appear in schema)
+STRING_FIELDS: dict[str, list[str]] = {
+    "biofizic/state": ["affect_quadrant", "valence_label"],
+    "biofizic/state/live": ["affect_quadrant", "valence_label"],
+    "biofizic/combined": ["affect_quadrant", "valence_label"],
 }
 
 # Campuri string salvate ca tag-uri InfluxDB (pentru filtrare si colorare Grafana)
 TAG_FIELDS: dict[str, list[str]] = {
     "biofizic/state": [
         "emotion", "emotion_baseline", "activity_mode", "motion_class", "why",
-        "valence_label", "affect_quadrant",
     ],
     "biofizic/state/live": [
         "emotion", "activity_mode", "motion_class",
-        "valence_label", "affect_quadrant",
     ],
     "biofizic/emotion/confirmed": [
         "emotion",
     ],
     "biofizic/combined": [
         "emotion", "emotion_baseline", "motion_class", "activity_mode",
-        "valence_label", "affect_quadrant",
     ],
 }
 
@@ -279,6 +283,13 @@ class MqttInfluxLogger:
             val = data.get(field)
             if val is not None:
                 point.tag(field, str(val))
+
+        # String fields (queryable in FlightSQL)
+        for field in STRING_FIELDS.get(topic, []):
+            val = data.get(field)
+            if val is not None:
+                point.field(field, str(val))
+                written += 1
 
         # Campuri booleane → 0/1
         for field in BOOL_FIELDS.get(topic, []):
