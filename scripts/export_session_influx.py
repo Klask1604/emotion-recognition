@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export InfluxDB session data (fusion + epoch) to CSV for offline review."""
+"""Export InfluxDB session data (state + combined + sensors) to CSV."""
 
 from __future__ import annotations
 
@@ -44,30 +44,19 @@ def main() -> None:
     sql = f"""
     SELECT
       time,
-      hr,
-      rmssd,
-      rmssd_ppg,
-      arousal_fused,
       arousal_10,
-      confidence_fused,
-      confidence_v2,
-      confidence_v3,
-      w_v2,
-      w_v3,
-      systems_agree,
-      strong_agreement,
-      emotion_v2,
-      emotion_v3,
-      arousal_label,
-      motion,
-      acc_rms,
-      z_pulse,
-      AVG(systems_agree) OVER (
-        ORDER BY time ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
-      ) * 100 AS agree_pct
-    FROM biofizic_combined
+      valence_10,
+      emotion,
+      rmssd,
+      stress_index,
+      mean_hr,
+      motion_class,
+      activity_mode,
+      confidence,
+      z_pulse_amp,
+      labels_agree
+    FROM biofizic_state
     WHERE time >= '{args.from_utc}' AND time <= '{args.to_utc}'
-      AND hr > 0
     ORDER BY time
     """
     rows = query_sql(args.url, args.database, sql)
@@ -77,25 +66,17 @@ def main() -> None:
     fieldnames = [
         "time_utc",
         "time_local",
-        "hr",
-        "rmssd",
-        "rmssd_ppg",
-        "arousal_fused",
         "arousal_10",
-        "confidence_fused",
-        "confidence_v2",
-        "confidence_v3",
-        "w_v2",
-        "w_v3",
-        "systems_agree",
-        "agree_pct",
-        "strong_agreement",
-        "emotion_v2",
-        "emotion_v3",
-        "arousal_label",
-        "motion",
-        "acc_rms",
-        "z_pulse",
+        "valence_10",
+        "emotion",
+        "rmssd",
+        "stress_index",
+        "mean_hr",
+        "motion_class",
+        "activity_mode",
+        "confidence",
+        "z_pulse_amp",
+        "labels_agree",
     ]
 
     with open(args.output, "w", newline="", encoding="utf-8") as fh:

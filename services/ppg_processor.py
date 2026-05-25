@@ -442,10 +442,8 @@ class PpgEngine:
             log.info("PPG processor conectat la %s:%d (buffer golit)", self.broker, self.port)
             client.subscribe("biofizic/ppg/raw", qos=0)
             client.subscribe("biofizic/ppg/batch", qos=0)
-            client.subscribe("biofizic/epoch", qos=0)
             client.subscribe("biofizic/sensors/batch", qos=0)
             client.subscribe("biofizic/state/live", qos=0)
-            client.subscribe("biofizic/acc/live", qos=0)
         else:
             log.error("MQTT connect esuata rc=%d", rc)
 
@@ -462,17 +460,11 @@ class PpgEngine:
             self._ingest_ppg(data)
         elif msg.topic == "biofizic/ppg/batch":
             self._ingest_ppg_batch(data)
-        elif msg.topic == "biofizic/epoch":
-            self._last_acc_rms = float(data.get("acc_rms", 0))
         elif msg.topic == "biofizic/sensors/batch":
             self._sensor_acc_rms = float(data.get("acc_rms", 0) or 0)
             self._sensor_acc_p90 = float(data.get("acc_p90", self._sensor_acc_rms) or 0)
         elif msg.topic == "biofizic/state/live":
             self._activity_mode = str(data.get("activity_mode", "UNKNOWN"))
-        elif msg.topic == "biofizic/acc/live":
-            acc = float(data.get("acc_rms", 0) or 0)
-            if acc > 0:
-                self._last_acc_rms = acc
 
     def _ingest_ppg_batch(self, data: dict) -> None:
         ts_list = data.get("ts_ms") or data.get("ts") or []

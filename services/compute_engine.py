@@ -28,7 +28,7 @@ import paho.mqtt.client as mqtt
 from biofizic.config import EPOCH_PUBLISH_INTERVAL_SECONDS, PRIMARY_DECISION_WINDOW_SECONDS
 from biofizic.pipeline import PhysiologyPipeline
 from biofizic.types import MultiWindowResult, WindowResult
-from biofizic.types import IbiBatchMessage, PpgBatchMessage, PhysiologyDecision, SensorBatchMessage
+from biofizic.types import IbiBatchMessage, PhysiologyDecision, SensorBatchMessage
 
 logging.basicConfig(
     level=logging.INFO,
@@ -70,17 +70,13 @@ class ComputeEngineService:
             return
         topics = [
             ("biofizic/ibi/batch", 0),
-            ("biofizic/ppg/batch", 0),
             ("biofizic/sensors/batch", 0),
             ("biofizic/ppg_hrv", 0),
-            ("biofizic/epoch", 1),
-            ("biofizic/acc/live", 0),
-            ("biofizic/hr/live", 0),
             ("biofizic/cmd/calibrate", 1),
         ]
         for topic, qos in topics:
             client.subscribe(topic, qos=qos)
-        log.info("Compute engine active (batch + legacy epoch)")
+        log.info("Compute engine active (batch topics)")
 
     def _on_message(self, client, userdata, msg) -> None:
         try:
@@ -103,14 +99,6 @@ class ComputeEngineService:
                 timestamps_ms=[int(x) for x in data.get("ibi_ts", data.get("ibi_ts_ms", []))],
             )
             self.pipeline.ingest_ibi_batch(batch)
-        elif topic == "biofizic/ppg/batch":
-            batch = PpgBatchMessage(
-                timestamp_ms=int(data.get("ts", now * 1000)),
-                green=[int(x) for x in data.get("green", [])],
-                infrared=[int(x) for x in data.get("ir", data.get("infrared", []))],
-                sample_timestamps_ms=[int(x) for x in data.get("ts_ms", data.get("ts", []))],
-            )
-            self.pipeline.ingest_ppg_batch(batch)
         elif topic == "biofizic/ppg_hrv":
             if "z_pulse_amp" in data:
                 self.pipeline.ingest_ppg_hrv(float(data["z_pulse_amp"]), now=now)
@@ -127,41 +115,6 @@ class ComputeEngineService:
                 skin_temperature_c=float(data.get("skin_temp", data.get("skin_temp_c", 0))),
                 ambient_temperature_c=float(data.get("ambient_temp", data.get("ambient_temp_c", 0))),
                 display_on=bool(data.get("displayOn", data.get("display_on", True))),
-            )
-            self.pipeline.ingest_sensor_batch(batch)
-        elif topic == "biofizic/epoch":
-            self.pipeline.ingest_legacy_epoch(data)
-            self.pipeline.legacy_epoch_metrics(data)
-        elif topic == "biofizic/acc/live":
-            prev = self.pipeline.state.last_sensor
-            batch = SensorBatchMessage(
-                timestamp_ms=int(now * 1000),
-                heart_rate_bpm=prev.heart_rate_bpm if prev else 0.0,
-                acceleration_rms=float(data.get("acc_rms", 0)),
-                acceleration_p90=float(data.get("acc_p90", data.get("acc_rms", 0))),
-                acceleration_std=prev.acceleration_std if prev else 0.0,
-                gyroscope_rms=prev.gyroscope_rms if prev else 0.0,
-                gyroscope_p90=prev.gyroscope_p90 if prev else 0.0,
-                gyroscope_std=prev.gyroscope_std if prev else 0.0,
-                skin_temperature_c=prev.skin_temperature_c if prev else 0.0,
-                ambient_temperature_c=prev.ambient_temperature_c if prev else 0.0,
-                display_on=prev.display_on if prev else True,
-            )
-            self.pipeline.ingest_sensor_batch(batch)
-        elif topic == "biofizic/hr/live":
-            prev = self.pipeline.state.last_sensor
-            batch = SensorBatchMessage(
-                timestamp_ms=int(now * 1000),
-                heart_rate_bpm=float(data.get("hr", 0)),
-                acceleration_rms=prev.acceleration_rms if prev else 0.0,
-                acceleration_p90=prev.acceleration_p90 if prev else 0.0,
-                acceleration_std=prev.acceleration_std if prev else 0.0,
-                gyroscope_rms=prev.gyroscope_rms if prev else 0.0,
-                gyroscope_p90=prev.gyroscope_p90 if prev else 0.0,
-                gyroscope_std=prev.gyroscope_std if prev else 0.0,
-                skin_temperature_c=prev.skin_temperature_c if prev else 0.0,
-                ambient_temperature_c=prev.ambient_temperature_c if prev else 0.0,
-                display_on=prev.display_on if prev else True,
             )
             self.pipeline.ingest_sensor_batch(batch)
 

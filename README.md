@@ -15,7 +15,7 @@ ppg-processor      → PPG DSP, z_pulse_amp (sympathetic proxy)
 mqtt-logger        → InfluxDB 3
 Grafana            → session dashboards
        ↓
-Watch UI ← biofizic/combined (arousal, valence, emotion label)
+Watch UI ← biofizic/state/live (1 Hz) + biofizic/combined (retained bootstrap ~30s)
 ```
 
 **Production path:** all decisions run in `services/compute_engine.py` → `biofizic/pipeline/PhysiologyPipeline`. There is no separate fusion or ML emotion service in the default stack.
@@ -88,9 +88,10 @@ Provisioning is configured with `allowUiUpdates: false` so file UIDs stay author
 
 ## MQTT topics (summary)
 
-**Watch → server:** `biofizic/ibi/batch`, `biofizic/ppg/batch`, `biofizic/sensors/batch`  
-**Server → watch:** `biofizic/state`, `biofizic/state/live`, `biofizic/combined`  
-**PPG side path:** `biofizic/ppg_hrv` (feeds valence via `z_pulse_amp`)
+**Watch → server:** `biofizic/ibi/batch`, `biofizic/ppg/batch`, `biofizic/sensors/batch`, `biofizic/cmd/calibrate`  
+**Server → watch:** `biofizic/state/live` (UI 1 Hz), `biofizic/combined` (retained ~30s), `biofizic/calibration/status`  
+**Inter-service:** `biofizic/ppg_hrv` (ppg-processor → compute-engine)  
+**Grafana / Influx (mqtt-logger):** `state`, `state/live`, `state/windows`, `combined`, `sensors/batch`, `ppg_hrv`, `ppg_pipeline`
 
 ## Models & datasets (local only)
 
@@ -126,7 +127,7 @@ Human-readable decision logs when running compute-engine:
 
 | UID | Purpose |
 |-----|---------|
-| `biofizic-live-overview` | Arousal + valence from `biofizic_state` |
+| `biofizic-live-overview` | Arousal + valence from `biofizic_state_live` (1 Hz) |
 | `biofizic-hrv-analysis` | Multi-window RMSSD / stress index |
 | `biofizic-baseline-compare` | Kubios vs personal baseline |
 | `biofizic-affect-classification` | 2D affect axes + quadrants |
@@ -134,7 +135,7 @@ Human-readable decision logs when running compute-engine:
 | `biofizic-ppg-pipeline` | Raw PPG reception + motion gate |
 | `biofizic-motion-har` | HAR class + acceleration |
 
-Queries use **`biofizic_state`** for affect fields. The legacy `biofizic_combined` table may still contain old fusion-era columns (`arousal_fused`, `systems_agree`, etc.) until new compute-engine data overwrites the schema.
+Queries use **`biofizic_state_live`** for live affect (1 Hz) and **`biofizic_state`** for full 30s epoch decisions.
 
 ## License / thesis context
 

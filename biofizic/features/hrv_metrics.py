@@ -14,20 +14,14 @@ Formulas:
 
 from __future__ import annotations
 
-import logging
-
 import numpy as np
 
 from biofizic.config import BAEVSKY_HISTOGRAM_BIN_MS
 from biofizic.signal import (
     filter_physiological_intervals,
-    parse_intervals_from_payload,
     successive_interval_differences,
-    trim_entries_to_lookback,
 )
 from biofizic.types import HrvMetrics, InterbeatIntervalEntry
-
-log = logging.getLogger("hrv_metrics")
 
 FEATURE_VECTOR_NAMES = ["rmssd", "mean_hr", "sdnn", "mean_ibi", "pnn50"]
 
@@ -90,32 +84,3 @@ def compute_hrv_from_entries(
         baevsky_stress_index_raw=baevsky_raw,
         kubios_stress_index=kubios_stress,
     )
-
-
-def compute_hrv_from_mqtt_payload(data: dict) -> HrvMetrics | None:
-    """Backward compatible entry for biofizic/epoch JSON."""
-    entries = parse_intervals_from_payload(data)
-    if not entries:
-        return None
-    ts_end = data.get("ts")
-    ts_ms = int(ts_end) if ts_end is not None and int(ts_end) > 0 else None
-    from biofizic.config import IBI_LOOKBACK_TRIM_MS
-
-    entries = trim_entries_to_lookback(
-        entries, end_timestamp_ms=ts_ms, max_span_ms=IBI_LOOKBACK_TRIM_MS
-    )
-    return compute_hrv_from_entries(entries)
-
-
-def warn_if_watch_server_rmssd_mismatch(data: dict, metrics: HrvMetrics) -> None:
-    watch_rmssd = float(data.get("rmssd") or 0)
-    if watch_rmssd <= 0 or metrics.rmssd_ms <= 0:
-        return
-    ratio = metrics.rmssd_ms / watch_rmssd
-    if ratio < 0.5 or ratio > 2.0:
-        log.warning(
-            "RMSSD watch=%.1f vs server=%.1f (beats=%d), using server value",
-            watch_rmssd,
-            metrics.rmssd_ms,
-            metrics.beat_count,
-        )

@@ -119,15 +119,6 @@ class ActivityContext:
             return True
         return False
 
-    def activity_legacy(self) -> str:
-        if self.acc_rms <= 0:
-            return "?"
-        if self.mode == ActivityMode.LOCOMOTION:
-            return "mers"
-        if self.mode == ActivityMode.ARM_ACTIVE:
-            return "miscare"
-        return "sedere"
-
 
 def _mad(values: Sequence[float]) -> float:
     if len(values) < 2:

@@ -6,13 +6,11 @@ from collections import deque
 
 from biofizic.config import ANALYSIS_WINDOW_SECONDS, IBI_BUFFER_RETENTION_MS
 from biofizic.features.hrv_metrics import compute_hrv_from_entries
-from biofizic.signal import parse_intervals_from_payload
 from biofizic.types import (
     HrvMetrics,
     IbiBatchMessage,
     InterbeatIntervalEntry,
     MultiWindowHrvResult,
-    PpgBatchMessage,
 )
 
 
@@ -76,13 +74,6 @@ class RollingIbiBuffer:
                     )
         self._trim(batch.timestamp_ms)
 
-    def ingest_epoch_payload(self, data: dict) -> None:
-        for entry in parse_intervals_from_payload(data):
-            self._entries.append(entry)
-        ts = int(data.get("ts") or 0)
-        if ts > 0:
-            self._trim(ts)
-
     def _trim(self, now_ms: int) -> None:
         cutoff = now_ms - self._retention_ms
         while self._entries and (
@@ -106,41 +97,3 @@ class RollingIbiBuffer:
             for e in self._entries
             if e.timestamp_ms is None or e.timestamp_ms >= cutoff
         ]
-
-
-class RollingPpgBuffer:
-    """Stores PPG green channel samples with timestamps."""
-
-    def __init__(self, retention_ms: int = 120_000) -> None:
-        self._retention_ms = retention_ms
-        self._green: deque[int] = deque()
-        self._timestamps_ms: deque[int] = deque()
-
-    def ingest_batch(self, batch: PpgBatchMessage) -> None:
-        ts_list = batch.sample_timestamps_ms or []
-        for i, value in enumerate(batch.green):
-            ts = ts_list[i] if i < len(ts_list) else batch.timestamp_ms
-            self._green.append(int(value))
-            self._timestamps_ms.append(int(ts))
-        if batch.timestamp_ms > 0:
-            self._trim(batch.timestamp_ms)
-
-    def _trim(self, now_ms: int) -> None:
-        cutoff = now_ms - self._retention_ms
-        while self._timestamps_ms and self._timestamps_ms[0] < cutoff:
-            self._timestamps_ms.popleft()
-            if self._green:
-                self._green.popleft()
-
-    def samples_in_last_seconds(self, seconds: float) -> tuple[list[int], list[int]]:
-        if not self._timestamps_ms:
-            return [], []
-        end = self._timestamps_ms[-1]
-        cutoff = end - int(seconds * 1000)
-        green: list[int] = []
-        ts: list[int] = []
-        for g, t in zip(self._green, self._timestamps_ms):
-            if t >= cutoff:
-                green.append(g)
-                ts.append(t)
-        return green, ts

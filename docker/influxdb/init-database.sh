@@ -13,12 +13,16 @@ while [ "$i" -lt 30 ]; do
 done
 
 echo "Creez database '${DB}'..."
-curl -sf -X POST "${URL}/api/v3/configure/database" \
+if curl -sf -X POST "${URL}/api/v3/configure/database" \
   -H "Content-Type: application/json" \
-  -d "{\"db\":\"${DB}\"}" \
-  || curl -sf -X POST "${URL}/api/v3/configure/database" \
+  -d "{\"db\":\"${DB}\"}"; then
+  :
+elif curl -sf -X POST "${URL}/api/v3/configure/database" \
   -H "Content-Type: application/json" \
-  -d "{\"name\":\"${DB}\"}" \
-  || echo "Database poate exista deja — continui."
+  -d "{\"name\":\"${DB}\"}"; then
+  :
+else
+  echo "Database poate exista deja — continui."
+fi
 
 echo "InfluxDB init gata."

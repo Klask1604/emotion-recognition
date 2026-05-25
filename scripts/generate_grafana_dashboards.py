@@ -423,11 +423,11 @@ def build_ppg_dashboard() -> dict:
         ),
         ts_panel(
             10,
-            "Watch live PPG stats (ceas → MQTT)",
+            "PPG pipeline buffer (server DSP)",
             42,
-            "SELECT time, ppg_n, ppg_green_mean, ppg_green_std FROM biofizic_watch_live WHERE $__timeFilter(time) AND ppg_n > 0 ORDER BY time",
+            "SELECT time, buffer_span_sec, buffer_samples, green_mean, samples_in_batch FROM biofizic_ppg_pipeline WHERE $__timeFilter(time) ORDER BY time",
             extra_sql=[
-                "SELECT time, rmssd_live FROM biofizic_watch_live WHERE $__timeFilter(time) AND rmssd_live > 0 ORDER BY time",
+                "SELECT time, peak_count AS peaks_live, pulse_amp_mean AS amp_live FROM biofizic_ppg_pipeline WHERE $__timeFilter(time) AND peak_count > 0 ORDER BY time",
             ],
             h=7,
         ),

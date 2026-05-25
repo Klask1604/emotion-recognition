@@ -37,10 +37,6 @@ log = logging.getLogger("mqtt_logger")
 
 # Campuri numerice per topic (measurement = topic cu / → _)
 FLOAT_FIELDS: dict[str, list[str]] = {
-    "biofizic/epoch": [
-        "mean_hr", "rmssd", "acc_rms", "ibi_n",
-        "sdnn", "pnn50", "mean_ibi", "window_sec", "hr",
-    ],
     "biofizic/ppg_hrv": [
         "rmssd_ppg", "mean_hr_ppg", "sdnn_ppg", "pnn50_ppg",
         "mean_ibi_ppg", "ibi_n_ppg", "peak_count",
@@ -64,10 +60,6 @@ FLOAT_FIELDS: dict[str, list[str]] = {
         "w60_ibi_count", "w60_covered_seconds",
         "w90_rmssd", "w90_sdnn", "w90_pnn50", "w90_stress_index", "w90_mean_hr",
         "w90_ibi_count", "w90_covered_seconds",
-    ],
-    "biofizic/emotion/confirmed": [
-        "confidence", "rmssd", "mean_hr", "acc_rms",
-        "warmup_pct", "ibi_n", "z_pulse_amp",
     ],
     "biofizic/combined": [
         "arousal_10", "valence_10", "affect_quadrant_code", "confidence",
@@ -93,9 +85,6 @@ TAG_FIELDS: dict[str, list[str]] = {
     "biofizic/state/windows": [
         "motion_class", "w30_quality", "w60_quality", "w90_quality",
     ],
-    "biofizic/emotion/confirmed": [
-        "emotion",
-    ],
     "biofizic/combined": [
         "emotion", "emotion_baseline", "motion_class", "activity_mode",
     ],
@@ -103,7 +92,6 @@ TAG_FIELDS: dict[str, list[str]] = {
 
 # Campuri booleane convertite la 0/1 pentru grafice
 BOOL_FIELDS: dict[str, list[str]] = {
-    "biofizic/emotion/confirmed": ["calibrated"],
     "biofizic/state": [
         "context_suppress_alert",
         "context_rest_like",
@@ -124,19 +112,13 @@ BOOL_FIELDS: dict[str, list[str]] = {
 }
 
 ALL_TOPICS = list(FLOAT_FIELDS.keys()) + [
-    "biofizic/ibi/batch",
-    "biofizic/ppg/batch",
     "biofizic/sensors/batch",
-    "biofizic/acc/live",
-    "biofizic/hr/live",
-    "biofizic/watch/live",
     "biofizic/ppg_pipeline",
 ]
 
-# QoS 1 pentru epoci rare (30s) — supraviețuiesc reconnect-urilor MQTT
+# QoS 1 pentru decizii rare (30s) — supraviețuiesc reconnect-urilor MQTT
 TOPIC_QOS: dict[str, int] = {
     "biofizic/ppg_hrv": 1,
-    "biofizic/epoch": 1,
     "biofizic/state": 1,
     "biofizic/combined": 1,
 }
@@ -144,8 +126,6 @@ TOPIC_QOS: dict[str, int] = {
 MQTT_KEEPALIVE_SEC = 120
 
 FLOAT_FIELDS.update({
-    "biofizic/ibi/batch": [],
-    "biofizic/ppg/batch": [],
     "biofizic/sensors/batch": [
         "hr", "acc_rms", "acc_p90", "acc_std", "gyro_rms", "gyro_p90", "gyro_std",
         "skin_temp", "ambient_temp",
@@ -156,38 +136,15 @@ FLOAT_FIELDS.update({
         "buffer_span_sec", "buffer_samples", "samples_in_batch", "green_mean",
         "acc_rms", "batches_total",
     ],
-    "biofizic/acc/live": ["acc_rms", "sma_g"],
-    "biofizic/hr/live": ["hr", "status"],
-    "biofizic/context/live": [
-        "activity_confidence", "acc_window_median", "acc_window_p90",
-        "acc_rms_live", "hr_live", "motion_z", "gmm_active_threshold",
-    ],
-    "biofizic/watch/live": [
-        "hr", "hr_status", "acc_rms", "acc_mag", "gyro_rms",
-        "skin_temp_c", "ambient_temp_c",
-        "ppg_n", "ppg_green_mean", "ppg_green_std", "ppg_ir_mean", "ppg_red_mean",
-        "steps", "ibi_n", "ibi_window_sec", "sec_since_ibi",
-        "rmssd_live", "sdnn_live", "mean_hr_live", "mean_ibi_live", "pnn50_live",
-        "arousal_fused", "arousal_10", "confidence",
-        "server_arousal_10", "server_motion_z", "server_z_hr",
-    ],
 })
 
 TAG_FIELDS.update({
-    "biofizic/context/live": ["activity_mode", "motion_baseline_source"],
     "biofizic/ppg_pipeline": ["skip_reason", "activity_mode"],
-    "biofizic/watch/live": [
-        "emotion", "server_emotion", "server_activity_mode",
-    ],
 })
 
 BOOL_FIELDS.update({
     "biofizic/combined": ["labels_agree"],
-    "biofizic/context/live": ["context_suppress_alert", "context_rest_like", "motion_gate", "hrv_gate"],
     "biofizic/ppg_pipeline": ["motion_blocked", "epoch_skipped"],
-    "biofizic/watch/live": [
-        "live", "display_on", "mqtt_connected", "hrv_ready", "profile_ready", "signal_ok",
-    ],
 })
 
 

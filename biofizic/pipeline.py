@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from biofizic.baseline import RestBaselineStore
 from biofizic.config import motion_model_path
@@ -18,10 +18,6 @@ from biofizic.decision.arousal_mapper import (
 )
 from biofizic.decision.physiology_fusion import fuse_physiology_and_motion
 from biofizic.decision.valence_mapper import compute_valence, finalize_affect_quadrant
-from biofizic.features.hrv_metrics import (
-    compute_hrv_from_mqtt_payload,
-    warn_if_watch_server_rmssd_mismatch,
-)
 from biofizic.logging import format_decision_block
 from biofizic.motion.motion_features import MotionFeatureVector
 from biofizic.motion.motion_ml import MotionHarModel
@@ -31,11 +27,10 @@ from biofizic.types import (
     MultiWindowHrvResult,
     MultiWindowResult,
     PhysiologyDecision,
-    PpgBatchMessage,
     SensorBatchMessage,
     WindowResult,
 )
-from biofizic.windows import MultiWindowProcessor, RollingIbiBuffer, RollingPpgBuffer
+from biofizic.windows import MultiWindowProcessor, RollingIbiBuffer
 
 log = logging.getLogger("physiology_pipeline")
 
@@ -55,8 +50,6 @@ class PipelineState:
     elevated_streak: int = 0
     epoch_count: int = 0
     last_decision_at: float = 0.0
-    last_epoch_publish_at: float = 0.0
-    ppg_pipeline_last: dict = field(default_factory=dict)
     z_pulse_amp: float = 0.0
     z_pulse_amp_at: float = 0.0
 
@@ -69,7 +62,6 @@ class PhysiologyPipeline:
 
     def __init__(self) -> None:
         self.ibi_buffer = RollingIbiBuffer()
-        self.ppg_buffer = RollingPpgBuffer()
         self.multi_window = MultiWindowProcessor()
         self.baseline = RestBaselineStore()
         self.har_model = MotionHarModel()
@@ -83,9 +75,6 @@ class PhysiologyPipeline:
     def ingest_ibi_batch(self, batch: IbiBatchMessage) -> None:
         self.ibi_buffer.ingest_batch(batch)
 
-    def ingest_ppg_batch(self, batch: PpgBatchMessage) -> None:
-        self.ppg_buffer.ingest_batch(batch)
-
     def ingest_sensor_batch(self, batch: SensorBatchMessage) -> None:
         self.state.last_sensor = batch
         self._activity = self.activity_engine.update(
@@ -96,24 +85,6 @@ class PhysiologyPipeline:
         """Latest sympathetic proxy from ppg-processor (biofizic/ppg_hrv)."""
         self.state.z_pulse_amp = float(z_pulse_amp)
         self.state.z_pulse_amp_at = now if now is not None else time.time()
-
-    def ingest_legacy_epoch(self, data: dict) -> None:
-        """Backward compatibility for biofizic/epoch until watch sends batches only."""
-        self.ibi_buffer.ingest_epoch_payload(data)
-        sensor = SensorBatchMessage(
-            timestamp_ms=int(data.get("ts") or time.time() * 1000),
-            heart_rate_bpm=float(data.get("hr") or data.get("mean_hr") or 0),
-            acceleration_rms=float(data.get("acc_rms") or 0),
-            acceleration_p90=float(data.get("acc_p90") or 0),
-            acceleration_std=float(data.get("acc_std") or 0),
-            gyroscope_rms=float(data.get("gyro_rms") or 0),
-            gyroscope_p90=float(data.get("gyro_p90") or 0),
-            gyroscope_std=float(data.get("gyro_std") or 0),
-            skin_temperature_c=float(data.get("skin_temp") or 0),
-            ambient_temperature_c=float(data.get("ambient_temp") or 0),
-            display_on=bool(data.get("displayOn", True)),
-        )
-        self.ingest_sensor_batch(sensor)
 
     def _fresh_z_pulse_amp(self, now_ts: float) -> float:
         if self.state.z_pulse_amp_at <= 0:
@@ -224,14 +195,6 @@ class PhysiologyPipeline:
             baseline_ready=self.baseline.is_ready,
         )
 
-    def run_live_tick(self, *, now: float | None = None) -> PhysiologyDecision | None:
-        """Backward-compatible wrapper; prefer run()."""
-        return self.run(now=now).decision
-
-    def run_epoch_tick(self, *, now: float | None = None) -> PhysiologyDecision | None:
-        """Backward-compatible wrapper; prefer run(publish_epoch=True)."""
-        return self.run(now=now, publish_epoch=True).decision
-
     def _build_decision(
         self,
         *,
@@ -333,9 +296,3 @@ class PhysiologyPipeline:
 
     def reset_baseline(self) -> None:
         self.baseline.reset_for_recalibration()
-
-    def legacy_epoch_metrics(self, data: dict):
-        metrics = compute_hrv_from_mqtt_payload(data)
-        if metrics:
-            warn_if_watch_server_rmssd_mismatch(data, metrics)
-        return metrics
