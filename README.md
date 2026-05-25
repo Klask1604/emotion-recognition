@@ -30,8 +30,6 @@ Watch UI ← biofizic/combined (arousal, valence, emotion label)
 | `affect_quadrant` | calm / activated / tense / depleted |
 | `labels_agree` | Kubios zone label vs personal baseline z-label |
 
-See [docs/architecture.md](docs/architecture.md) for formulas and MQTT topics.
-
 ## Repository layout
 
 ```
@@ -93,8 +91,6 @@ Provisioning is configured with `allowUiUpdates: false` so file UIDs stay author
 **Watch → server:** `biofizic/ibi/batch`, `biofizic/ppg/batch`, `biofizic/sensors/batch`  
 **Server → watch:** `biofizic/state`, `biofizic/state/live`, `biofizic/combined`  
 **PPG side path:** `biofizic/ppg_hrv` (feeds valence via `z_pulse_amp`)
-
-Full list: [docs/architecture.md](docs/architecture.md).
 
 ## Models & datasets (local only)
 

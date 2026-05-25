@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EVAL = ROOT / "eval_results"
-DOCS = ROOT / "docs"
+OUT = EVAL
 
 
 def _load(name: str) -> dict:
@@ -117,10 +117,10 @@ def main() -> None:
         "",
     ]
 
-    DOCS.mkdir(parents=True, exist_ok=True)
-    report_path = DOCS / "ml_evaluation_report.md"
+    OUT.mkdir(parents=True, exist_ok=True)
+    report_path = OUT / "ml_evaluation_report.md"
     report_path.write_text("\n".join(sections), encoding="utf-8")
-    json_path = DOCS / "ml_confusion_matrices.json"
+    json_path = OUT / "ml_confusion_matrices.json"
     json_path.write_text(json.dumps(matrices, indent=2), encoding="utf-8")
     print(f"Wrote {report_path}")
     print(f"Wrote {json_path}")
