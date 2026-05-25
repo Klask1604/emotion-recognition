@@ -27,7 +27,7 @@ import paho.mqtt.client as mqtt
 
 from biofizic.config import EPOCH_PUBLISH_INTERVAL_SECONDS, PRIMARY_DECISION_WINDOW_SECONDS
 from biofizic.pipeline import PhysiologyPipeline
-from biofizic.types import MultiWindowResult, WindowResult
+from biofizic.types import AcquisitionBatchMessage, MultiWindowResult, WindowResult
 from biofizic.types import IbiBatchMessage, PhysiologyDecision, SensorBatchMessage
 
 logging.basicConfig(
@@ -41,6 +41,56 @@ MOTION_CODE = {"STILL": 0, "SCROLL": 1, "HAND": 2, "WALK": 3}
 QUADRANT_CODE = {"calm": 1, "activated": 2, "tense": 3, "depleted": 4}
 WINDOWS_PUBLISH_INTERVAL_SECONDS = 5.0
 _BEST_WINDOW_SECONDS = {"w30": 30, "w60": 60, "w90": 90}
+_LEGACY_SUPPRESS_SEC = 2.0
+
+
+def _parse_acquisition(data: dict) -> AcquisitionBatchMessage | None:
+    schema = int(data.get("schema", 0))
+    if schema < 2:
+        return None
+    ts_publish = int(data.get("ts_publish") or data.get("ts") or 0)
+    if ts_publish <= 0:
+        return None
+    motion = data.get("motion") or {}
+    ibi = data.get("ibi") or {}
+    ppg = data.get("ppg") or {}
+    ibi_ms = [int(x) for x in (ibi.get("ms") or data.get("ibi_ms") or [])]
+    ibi_ts = [int(x) for x in (ibi.get("ts") or data.get("ibi_ts") or [])]
+    ppg_ts = [int(x) for x in (ppg.get("ts_ms") or [])]
+    ppg_green = [int(x) for x in (ppg.get("green") or [])]
+    ppg_ir = [int(x) for x in (ppg.get("ir") or [])]
+    anchor_candidates = [ts_publish]
+    if ibi_ts:
+        anchor_candidates.append(max(ibi_ts))
+    if ppg_ts:
+        anchor_candidates.append(max(ppg_ts))
+    skin_ts = int(data.get("skin_temp_ts") or 0)
+    if skin_ts > 0:
+        anchor_candidates.append(skin_ts)
+    ts_anchor = int(data.get("ts_anchor") or max(anchor_candidates))
+    return AcquisitionBatchMessage(
+        timestamp_publish_ms=ts_publish,
+        timestamp_anchor_ms=ts_anchor,
+        sequence=int(data.get("seq") or 0),
+        heart_rate_bpm=float(data.get("hr") or 0),
+        display_on=bool(data.get("display_on", data.get("displayOn", True))),
+        skin_temperature_c=float(data.get("skin_temp") or data.get("skin_temp_c") or 0),
+        ambient_temperature_c=float(data.get("ambient_temp") or data.get("ambient_temp_c") or 0),
+        skin_temperature_ts_ms=skin_ts,
+        acceleration_rms=float(motion.get("acc_rms") or data.get("acc_rms") or 0),
+        acceleration_p90=float(motion.get("acc_p90") or data.get("acc_p90") or 0),
+        acceleration_std=float(motion.get("acc_std") or data.get("acc_std") or 0),
+        gyroscope_rms=float(motion.get("gyro_rms") or data.get("gyro_rms") or 0),
+        gyroscope_p90=float(motion.get("gyro_p90") or data.get("gyro_p90") or 0),
+        gyroscope_std=float(motion.get("gyro_std") or data.get("gyro_std") or 0),
+        motion_window_ms=int(motion.get("window_ms") or 1000),
+        ibi_intervals_ms=ibi_ms,
+        ibi_timestamps_ms=ibi_ts,
+        ibi_timestamp_source=str(ibi.get("source") or "reconstructed"),
+        ppg_green=ppg_green,
+        ppg_infrared=ppg_ir,
+        ppg_timestamps_ms=ppg_ts,
+    )
 
 
 class ComputeEngineService:
@@ -49,6 +99,7 @@ class ComputeEngineService:
         self._last_live_at = 0.0
         self._last_windows_at = 0.0
         self._last_epoch_at = 0.0
+        self._last_acquisition_at = 0.0
         self.client = mqtt.Client(
             client_id="biofizic_compute",
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
@@ -69,6 +120,7 @@ class ComputeEngineService:
         if rc != 0:
             return
         topics = [
+            ("biofizic/acquisition/batch", 0),
             ("biofizic/ibi/batch", 0),
             ("biofizic/sensors/batch", 0),
             ("biofizic/ppg_hrv", 0),
@@ -76,7 +128,7 @@ class ComputeEngineService:
         ]
         for topic, qos in topics:
             client.subscribe(topic, qos=qos)
-        log.info("Compute engine active (batch topics)")
+        log.info("Compute engine active (acquisition + legacy batch topics)")
 
     def _on_message(self, client, userdata, msg) -> None:
         try:
@@ -92,6 +144,22 @@ class ComputeEngineService:
             self._publish_calibration(client, "Profile baseline reset")
             return
 
+        if topic == "biofizic/acquisition/batch":
+            batch = _parse_acquisition(data)
+            if batch is None:
+                return
+            self._last_acquisition_at = now
+            self.pipeline.ingest_acquisition(batch)
+            self._run_and_publish(
+                client,
+                now=now,
+                end_timestamp_ms=batch.timestamp_anchor_ms,
+            )
+            return
+
+        if now - self._last_acquisition_at < _LEGACY_SUPPRESS_SEC:
+            return
+
         if topic == "biofizic/ibi/batch":
             batch = IbiBatchMessage(
                 timestamp_ms=int(data.get("ts", now * 1000)),
@@ -102,6 +170,7 @@ class ComputeEngineService:
         elif topic == "biofizic/ppg_hrv":
             if "z_pulse_amp" in data:
                 self.pipeline.ingest_ppg_hrv(float(data["z_pulse_amp"]), now=now)
+            return
         elif topic == "biofizic/sensors/batch":
             batch = SensorBatchMessage(
                 timestamp_ms=int(data.get("ts", now * 1000)),
@@ -117,12 +186,27 @@ class ComputeEngineService:
                 display_on=bool(data.get("displayOn", data.get("display_on", True))),
             )
             self.pipeline.ingest_sensor_batch(batch)
+        else:
+            return
 
+        self._run_and_publish(client, now=now)
+
+    def _run_and_publish(
+        self,
+        client,
+        *,
+        now: float,
+        end_timestamp_ms: int | None = None,
+    ) -> None:
         publish_epoch = now - self._last_epoch_at >= EPOCH_PUBLISH_INTERVAL_SECONDS
         if publish_epoch:
             self._last_epoch_at = now
 
-        result = self.pipeline.run(now=now, publish_epoch=publish_epoch)
+        result = self.pipeline.run(
+            now=now,
+            end_timestamp_ms=end_timestamp_ms,
+            publish_epoch=publish_epoch,
+        )
 
         if now - self._last_live_at >= 1.0:
             self._last_live_at = now

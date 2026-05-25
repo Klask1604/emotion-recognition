@@ -31,6 +31,55 @@ class PpgBatchMessage:
 
 
 @dataclass
+class AcquisitionBatchMessage:
+    """Atomic 1 Hz acquisition frame (schema v2) from the watch."""
+
+    timestamp_publish_ms: int
+    timestamp_anchor_ms: int
+    sequence: int
+    heart_rate_bpm: float = 0.0
+    display_on: bool = True
+    skin_temperature_c: float = 0.0
+    ambient_temperature_c: float = 0.0
+    skin_temperature_ts_ms: int = 0
+    acceleration_rms: float = 0.0
+    acceleration_p90: float = 0.0
+    acceleration_std: float = 0.0
+    gyroscope_rms: float = 0.0
+    gyroscope_p90: float = 0.0
+    gyroscope_std: float = 0.0
+    motion_window_ms: int = 1000
+    ibi_intervals_ms: list[int] = field(default_factory=list)
+    ibi_timestamps_ms: list[int] = field(default_factory=list)
+    ibi_timestamp_source: str = "reconstructed"
+    ppg_green: list[int] = field(default_factory=list)
+    ppg_infrared: list[int] = field(default_factory=list)
+    ppg_timestamps_ms: list[int] = field(default_factory=list)
+
+    def to_sensor_batch(self) -> SensorBatchMessage:
+        return SensorBatchMessage(
+            timestamp_ms=self.timestamp_anchor_ms,
+            heart_rate_bpm=self.heart_rate_bpm,
+            acceleration_rms=self.acceleration_rms,
+            acceleration_p90=self.acceleration_p90,
+            acceleration_std=self.acceleration_std,
+            gyroscope_rms=self.gyroscope_rms,
+            gyroscope_p90=self.gyroscope_p90,
+            gyroscope_std=self.gyroscope_std,
+            skin_temperature_c=self.skin_temperature_c,
+            ambient_temperature_c=self.ambient_temperature_c,
+            display_on=self.display_on,
+        )
+
+    def to_ibi_batch(self) -> IbiBatchMessage:
+        return IbiBatchMessage(
+            timestamp_ms=self.timestamp_anchor_ms,
+            intervals_ms=self.ibi_intervals_ms,
+            timestamps_ms=self.ibi_timestamps_ms,
+        )
+
+
+@dataclass
 class SensorBatchMessage:
     """Aggregated sensor stats from the watch (1 Hz)."""
 

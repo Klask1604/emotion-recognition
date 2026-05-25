@@ -440,6 +440,7 @@ class PpgEngine:
             self.buf.clear()
             self._last_epoch_ts = time.time()
             log.info("PPG processor conectat la %s:%d (buffer golit)", self.broker, self.port)
+            client.subscribe("biofizic/acquisition/batch", qos=0)
             client.subscribe("biofizic/ppg/raw", qos=0)
             client.subscribe("biofizic/ppg/batch", qos=0)
             client.subscribe("biofizic/sensors/batch", qos=0)
@@ -458,6 +459,23 @@ class PpgEngine:
                 log.info("Ignorat batch PPG retinut (stale de la sesiunea anterioara)")
                 return
             self._ingest_ppg(data)
+        elif msg.topic == "biofizic/acquisition/batch":
+            if int(data.get("schema", 0)) < 2:
+                return
+            ppg = data.get("ppg") or {}
+            self._ingest_ppg_batch(
+                {
+                    "ts_ms": ppg.get("ts_ms") or [],
+                    "green": ppg.get("green") or [],
+                }
+            )
+            motion = data.get("motion") or {}
+            acc_rms = float(motion.get("acc_rms", 0) or 0)
+            if acc_rms > 0:
+                self._sensor_acc_rms = acc_rms
+                self._sensor_acc_p90 = float(
+                    motion.get("acc_p90", self._sensor_acc_rms) or 0
+                )
         elif msg.topic == "biofizic/ppg/batch":
             self._ingest_ppg_batch(data)
         elif msg.topic == "biofizic/sensors/batch":

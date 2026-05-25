@@ -52,20 +52,17 @@ def successive_interval_differences(
     """
     RMSSD input: prefer timestamp-coherent pairs, else simple consecutive delta.
     """
-    with_timestamps: list[float] = []
+    diffs: list[float] = []
     for i in range(len(entries) - 1):
         left = entries[i]
         right = entries[i + 1]
         if left.timestamp_ms is not None and right.timestamp_ms is not None:
             gap_ms = right.timestamp_ms - left.timestamp_ms
             if abs(gap_ms - right.interval_ms) < MAX_TIMESTAMP_IBI_MISMATCH_MS:
-                with_timestamps.append(float(right.interval_ms - left.interval_ms))
-    if with_timestamps:
-        return with_timestamps
-    return [
-        float(entries[i + 1].interval_ms - entries[i].interval_ms)
-        for i in range(len(entries) - 1)
-    ]
+                diffs.append(float(right.interval_ms - left.interval_ms))
+                continue
+        diffs.append(float(right.interval_ms - left.interval_ms))
+    return diffs
 
 
 def trim_entries_to_lookback(

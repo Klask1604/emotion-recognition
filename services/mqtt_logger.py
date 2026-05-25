@@ -112,6 +112,7 @@ BOOL_FIELDS: dict[str, list[str]] = {
 }
 
 ALL_TOPICS = list(FLOAT_FIELDS.keys()) + [
+    "biofizic/acquisition/batch",
     "biofizic/sensors/batch",
     "biofizic/ppg_pipeline",
 ]
@@ -126,6 +127,10 @@ TOPIC_QOS: dict[str, int] = {
 MQTT_KEEPALIVE_SEC = 120
 
 FLOAT_FIELDS.update({
+    "biofizic/acquisition/batch": [
+        "hr", "skin_temp", "ambient_temp",
+        "acc_rms", "acc_p90", "acc_std", "gyro_rms", "gyro_p90", "gyro_std",
+    ],
     "biofizic/sensors/batch": [
         "hr", "acc_rms", "acc_p90", "acc_std", "gyro_rms", "gyro_p90", "gyro_std",
         "skin_temp", "ambient_temp",
@@ -168,6 +173,29 @@ def flatten_windows(payload: dict) -> dict:
                 flat[key] = value
             elif value is not None:
                 flat[key] = value
+    return flat
+
+
+def flatten_acquisition(payload: dict) -> dict:
+    """Flatten nested motion scalars for Influx (arrays omitted)."""
+    flat: dict = {
+        "ts": payload.get("ts_publish") or payload.get("ts_anchor"),
+        "hr": payload.get("hr"),
+        "skin_temp": payload.get("skin_temp"),
+        "ambient_temp": payload.get("ambient_temp"),
+        "display_on": payload.get("display_on"),
+        "seq": payload.get("seq"),
+    }
+    motion = payload.get("motion") or {}
+    for key in ("acc_rms", "acc_p90", "acc_std", "gyro_rms", "gyro_p90", "gyro_std"):
+        if key in motion:
+            flat[key] = motion[key]
+    ibi = payload.get("ibi") or {}
+    if isinstance(ibi.get("ms"), list):
+        flat["ibi_count"] = len(ibi["ms"])
+    ppg = payload.get("ppg") or {}
+    if isinstance(ppg.get("green"), list):
+        flat["ppg_count"] = len(ppg["green"])
     return flat
 
 
@@ -248,9 +276,11 @@ class MqttInfluxLogger:
 
         if topic == "biofizic/state/windows":
             data = flatten_windows(data)
+        elif topic == "biofizic/acquisition/batch":
+            data = flatten_acquisition(data)
 
         # Timestamp din payload daca exista, altfel now
-        ts_ms = data.get("ts")
+        ts_ms = data.get("ts") or data.get("ts_publish") or data.get("ts_anchor")
         if ts_ms and isinstance(ts_ms, (int, float)) and ts_ms > 1e12:
             dt = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
         else:

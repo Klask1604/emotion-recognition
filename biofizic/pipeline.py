@@ -23,6 +23,7 @@ from biofizic.motion.motion_features import MotionFeatureVector
 from biofizic.motion.motion_ml import MotionHarModel
 from biofizic.types import (
     HrvMetrics,
+    AcquisitionBatchMessage,
     IbiBatchMessage,
     MultiWindowHrvResult,
     MultiWindowResult,
@@ -74,6 +75,11 @@ class PhysiologyPipeline:
 
     def ingest_ibi_batch(self, batch: IbiBatchMessage) -> None:
         self.ibi_buffer.ingest_batch(batch)
+
+    def ingest_acquisition(self, batch: AcquisitionBatchMessage) -> None:
+        """Atomic ingest: IBI + sensor stats share ts_anchor."""
+        self.ingest_ibi_batch(batch.to_ibi_batch())
+        self.ingest_sensor_batch(batch.to_sensor_batch())
 
     def ingest_sensor_batch(self, batch: SensorBatchMessage) -> None:
         self.state.last_sensor = batch
@@ -138,12 +144,15 @@ class PhysiologyPipeline:
         self,
         *,
         now: float | None = None,
+        end_timestamp_ms: int | None = None,
         publish_epoch: bool = False,
     ) -> MultiWindowResult:
         """Always returns a result; decision may be None when best window is unavailable."""
         now_ts = now if now is not None else time.time()
         sensor = self.state.last_sensor
-        end_ms = int(sensor.timestamp_ms) if sensor else int(now_ts * 1000)
+        end_ms = end_timestamp_ms
+        if end_ms is None:
+            end_ms = int(sensor.timestamp_ms) if sensor else int(now_ts * 1000)
 
         all_entries = self.ibi_buffer.entries_in_last_ms(90_000, end_ms=end_ms)
         buf_size = len(all_entries)
@@ -255,10 +264,12 @@ class PhysiologyPipeline:
             display_a10,
         )
 
-        baseline_label = baseline_z_score_to_label(
-            stress_z, baseline_ready=self.baseline.is_ready
-        )
         baseline_si = float(self.baseline.baseline_stress_index or 0.0)
+        baseline_label = baseline_z_score_to_label(
+            stress_z,
+            baseline_ready=self.baseline.is_ready,
+            baseline_si=baseline_si,
+        )
         labels_agree = (
             self.baseline.is_ready and kubios_label == baseline_label
         )

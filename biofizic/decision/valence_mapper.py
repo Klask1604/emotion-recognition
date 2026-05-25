@@ -63,7 +63,7 @@ def compute_valence(
         return ValenceResult(
             valence_10=5,
             valence_label="neutral",
-            affect_quadrant="calm",
+            affect_quadrant="pending",
             valence_score=0.0,
         )
 
@@ -79,7 +79,7 @@ def compute_valence(
     return ValenceResult(
         valence_10=valence_10,
         valence_label=label,
-        affect_quadrant="calm",
+        affect_quadrant="pending",
         valence_score=valence_score,
     )
 

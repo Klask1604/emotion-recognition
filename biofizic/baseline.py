@@ -22,6 +22,8 @@ from biofizic.config import (
     STILL_EPOCHS_BEFORE_BASELINE_LOCK,
     rest_baseline_path,
 )
+from biofizic.config import KubiosZoneId
+from biofizic.decision.arousal_mapper import kubios_zone_for_stress_index
 
 log = logging.getLogger("rest_baseline")
 
@@ -72,6 +74,10 @@ class RestBaselineStore:
             )
             return
 
+        zone = kubios_zone_for_stress_index(kubios_stress_index)
+        if zone.zone_id not in (KubiosZoneId.LOW, KubiosZoneId.NORMAL):
+            return
+
         assert self._baseline_rmssd_ms is not None
         assert self._baseline_stress_index is not None
         alpha = BASELINE_EMA_ALPHA
@@ -102,7 +108,9 @@ class RestBaselineStore:
         return float(np.clip((kubios_stress_index - base) / scale, -3.0, 3.0))
 
     def rmssd_z_score(self, rmssd_ms: float) -> float:
-        base = self._baseline_rmssd_ms if self._baseline_rmssd_ms else 45.0
+        if not self.is_ready or self._baseline_rmssd_ms is None:
+            return 0.0
+        base = self._baseline_rmssd_ms
         scale = max(8.0, self._rmssd_scale)
         return float(np.clip((base - rmssd_ms) / scale, -3.0, 3.0))
 

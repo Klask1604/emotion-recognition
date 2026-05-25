@@ -60,23 +60,15 @@ def arousal_scale_10_to_label(scale_10: int) -> str:
     return "Ridicat"
 
 
-def baseline_z_score_to_label(z_score: float, *, baseline_ready: bool) -> str:
-    from biofizic.config import (
-        STRESS_INDEX_Z_ALERT,
-        STRESS_INDEX_Z_ALERT_STRONG,
-    )
-
-    if not baseline_ready:
+def baseline_z_score_to_label(
+    z_score: float,
+    *,
+    baseline_ready: bool,
+    baseline_si: float = 0.0,
+) -> str:
+    """Map personal baseline z-score to Kubios zone label (same scale as arousal)."""
+    if not baseline_ready or baseline_si <= 0:
         return "pending"
-    z = float(z_score)
-    if z < -0.5:
-        return "Relaxat"
-    if z < 0.5:
-        return "Echilibrat"
-    if z < STRESS_INDEX_Z_ALERT:
-        return "Moderat"
-    if z < STRESS_INDEX_Z_ALERT_STRONG:
-        return "Moderat"
-    if z < 2.5:
-        return "Alert"
-    return "Ridicat"
+    scale = max(0.5, baseline_si * 0.15)
+    effective_si = baseline_si + float(z_score) * scale
+    return kubios_zone_for_stress_index(effective_si).label
