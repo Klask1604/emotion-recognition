@@ -6,7 +6,7 @@ from collections import deque
 
 import numpy as np
 
-from biofizic.constants.kubios_zones import (
+from biofizic.config import (
     ALERT_CONFIRMATION_EPOCH_COUNT,
     REST_ACCELERATION_P90_MAX,
     RMSSD_SPIKE_RATIO_THRESHOLD,

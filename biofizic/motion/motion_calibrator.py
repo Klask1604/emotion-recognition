@@ -6,7 +6,7 @@ from collections import deque
 
 import numpy as np
 
-from biofizic.thresholds import PASSIVE_EMA_ALPHA, PASSIVE_REST_EPOCHS_MIN
+from biofizic.config import PASSIVE_EMA_ALPHA, PASSIVE_REST_EPOCHS_MIN
 
 STILL_CLASS = "STILL"
 

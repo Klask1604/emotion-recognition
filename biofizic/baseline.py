@@ -17,11 +17,11 @@ from pathlib import Path
 
 import numpy as np
 
-from biofizic.constants.kubios_zones import (
+from biofizic.config import (
     BASELINE_EMA_ALPHA,
     STILL_EPOCHS_BEFORE_BASELINE_LOCK,
+    rest_baseline_path,
 )
-from biofizic.paths import rest_baseline_path
 
 log = logging.getLogger("rest_baseline")
 

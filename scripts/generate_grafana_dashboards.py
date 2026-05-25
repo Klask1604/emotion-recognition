@@ -51,7 +51,7 @@ END
 """.strip()
 
 
-def dashboard_meta(uid: str, title: str, tags: list[str], panels: list, *, version: int = 1) -> dict:
+def dashboard_meta(uid: str, title: str, tags: list[str], panels: list, *, version: int = 1, refresh: str = "5s") -> dict:
     """Standard dashboard envelope; id=null lets Grafana assign stable identity by uid."""
     return {
         "id": None,
@@ -61,7 +61,7 @@ def dashboard_meta(uid: str, title: str, tags: list[str], panels: list, *, versi
         "timezone": "browser",
         "schemaVersion": 39,
         "version": version,
-        "refresh": "5s",
+        "refresh": refresh,
         "panels": panels,
     }
 
@@ -493,21 +493,22 @@ def build_motion_dashboard() -> dict:
 
 
 def build_overview_dashboard() -> dict:
-    """Live overview from biofizic_state (canonical schema). Avoid biofizic_combined legacy fusion fields."""
+    """Live overview from biofizic_state_live (1 Hz). Epoch decisions remain on biofizic_state."""
     quadrant = AFFECT_QUADRANT_SQL.replace("\n", " ")
     panels = [
         stat_panel(
             1,
-            "Arousal",
-            "SELECT arousal_10 AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            "Arousal (live)",
+            "SELECT arousal_10 AS v FROM biofizic_state_live "
+            "WHERE $__timeFilter(time) AND arousal_10 IS NOT NULL ORDER BY time DESC LIMIT 1",
             0,
             0,
             decimals=0,
         ),
         stat_panel(
             2,
-            "Valence",
-            "SELECT valence_10 AS v FROM biofizic_state "
+            "Valence (live)",
+            "SELECT valence_10 AS v FROM biofizic_state_live "
             "WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time DESC LIMIT 1",
             6,
             0,
@@ -515,34 +516,123 @@ def build_overview_dashboard() -> dict:
         ),
         stat_panel(
             3,
-            "Affect quadrant",
-            f"SELECT {quadrant} AS v FROM biofizic_state "
-            "WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time DESC LIMIT 1",
+            "IBI buffer size",
+            "SELECT ibi_buffer_size AS v FROM biofizic_state_live "
+            "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             12,
             0,
             decimals=0,
         ),
+        stat_panel(
+            4,
+            "Data quality",
+            "SELECT data_quality AS v FROM biofizic_state_live "
+            "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            18,
+            0,
+            decimals=0,
+        ),
         ts_panel(
+            5,
+            "Arousal and valence (live 1 Hz)",
             4,
-            "Arousal and valence (state)",
-            4,
-            "SELECT time, arousal_10, valence_10 FROM biofizic_state "
+            "SELECT time, arousal_10, valence_10 FROM biofizic_state_live "
             "WHERE $__timeFilter(time) AND valence_10 IS NOT NULL ORDER BY time",
             min_v=0,
             max_v=10,
             decimals=0,
         ),
         ts_panel(
-            5,
-            "Skin temp and HR (1 Hz batch)",
+            6,
+            "RMSSD and stress index (live)",
             12,
+            "SELECT time, rmssd, stress_index FROM biofizic_state_live "
+            "WHERE $__timeFilter(time) AND rmssd > 0 ORDER BY time",
+            decimals=2,
+        ),
+        timeline_panel(
+            7,
+            "Data quality over time",
+            "SELECT time, data_quality FROM biofizic_state_live "
+            "WHERE $__timeFilter(time) ORDER BY time",
+            20,
+            h=4,
+        ),
+        ts_panel(
+            8,
+            "Skin temp and HR (1 Hz batch)",
+            24,
             "SELECT time, skin_temp FROM biofizic_sensors_batch WHERE $__timeFilter(time) AND skin_temp > 0 ORDER BY time",
             extra_sql=[
                 "SELECT time, hr FROM biofizic_sensors_batch WHERE $__timeFilter(time) AND hr > 0 ORDER BY time",
             ],
+            h=6,
         ),
     ]
-    return dashboard_meta("biofizic-live-overview", "Biofizic Live Overview", ["biofizic", "overview"], panels, version=4)
+    return dashboard_meta(
+        "biofizic-live-overview",
+        "Biofizic Live Overview",
+        ["biofizic", "overview"],
+        panels,
+        version=5,
+        refresh="1s",
+    )
+
+
+def build_window_comparison_dashboard() -> dict:
+    """Compare HRV metrics across 30/60/90s windows from biofizic_state_windows."""
+    panels = [
+        ts_panel(
+            1,
+            "RMSSD per window",
+            0,
+            "SELECT time, w30_rmssd, w60_rmssd, w90_rmssd FROM biofizic_state_windows "
+            "WHERE $__timeFilter(time) AND w30_rmssd > 0 ORDER BY time",
+            unit="ms",
+        ),
+        ts_panel(
+            2,
+            "Stress index per window",
+            8,
+            "SELECT time, w30_stress_index, w60_stress_index, w90_stress_index "
+            "FROM biofizic_state_windows WHERE $__timeFilter(time) ORDER BY time",
+            decimals=2,
+        ),
+        ts_panel(
+            3,
+            "IBI count per window",
+            16,
+            "SELECT time, w30_ibi_count, w60_ibi_count, w90_ibi_count "
+            "FROM biofizic_state_windows WHERE $__timeFilter(time) ORDER BY time",
+            decimals=0,
+        ),
+        stat_panel(
+            4,
+            "IBI buffer size",
+            "SELECT ibi_buffer_size AS v FROM biofizic_state_windows "
+            "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            0,
+            24,
+            w=8,
+            decimals=0,
+        ),
+        timeline_panel(
+            5,
+            "Window quality (w30 / w60 / w90)",
+            "SELECT time, w30_quality, w60_quality, w90_quality "
+            "FROM biofizic_state_windows WHERE $__timeFilter(time) ORDER BY time",
+            28,
+            h=5,
+        ),
+    ]
+    return dashboard_meta(
+        "biofizic-window-comparison",
+        "Biofizic Window Comparison",
+        ["biofizic", "windows"],
+        panels,
+        version=1,
+        refresh="5s",
+    )
 
 
 def build_affect_dashboard() -> dict:
@@ -699,6 +789,7 @@ def main() -> None:
         "biofizic-ppg-pipeline.json": build_ppg_dashboard(),
         "biofizic-motion-har.json": build_motion_dashboard(),
         "biofizic-live-overview.json": build_overview_dashboard(),
+        "biofizic-window-comparison.json": build_window_comparison_dashboard(),
         "biofizic-affect-classification.json": build_affect_dashboard(),
         "biofizic-session-overview.json": build_session_overview_dashboard(),
     }

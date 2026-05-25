@@ -54,7 +54,16 @@ FLOAT_FIELDS: dict[str, list[str]] = {
     ],
     "biofizic/state/live": [
         "arousal_10", "arousal_pct", "valence_10", "mean_hr", "rmssd", "stress_index",
-        "baseline_si", "z_si", "z_pulse_amp", "motion_conf", "window_sec",
+        "baseline_si", "z_si", "z_pulse_amp", "motion_conf", "window_sec", "ibi_buffer_size",
+    ],
+    "biofizic/state/windows": [
+        "ibi_buffer_size",
+        "w30_rmssd", "w30_sdnn", "w30_pnn50", "w30_stress_index", "w30_mean_hr",
+        "w30_ibi_count", "w30_covered_seconds",
+        "w60_rmssd", "w60_sdnn", "w60_pnn50", "w60_stress_index", "w60_mean_hr",
+        "w60_ibi_count", "w60_covered_seconds",
+        "w90_rmssd", "w90_sdnn", "w90_pnn50", "w90_stress_index", "w90_mean_hr",
+        "w90_ibi_count", "w90_covered_seconds",
     ],
     "biofizic/emotion/confirmed": [
         "confidence", "rmssd", "mean_hr", "acc_rms",
@@ -79,7 +88,10 @@ TAG_FIELDS: dict[str, list[str]] = {
         "emotion", "emotion_baseline", "activity_mode", "motion_class", "why",
     ],
     "biofizic/state/live": [
-        "emotion", "activity_mode", "motion_class",
+        "emotion", "activity_mode", "motion_class", "data_quality", "window_used",
+    ],
+    "biofizic/state/windows": [
+        "motion_class", "w30_quality", "w60_quality", "w90_quality",
     ],
     "biofizic/emotion/confirmed": [
         "emotion",
@@ -106,8 +118,9 @@ BOOL_FIELDS: dict[str, list[str]] = {
     ],
     "biofizic/state/live": [
         "live", "motion_gated", "profile_ready",
-        "context_suppress_alert", "context_rest_like",
+        "context_suppress_alert", "context_rest_like", "baseline_ready",
     ],
+    "biofizic/state/windows": ["baseline_ready"],
 }
 
 ALL_TOPICS = list(FLOAT_FIELDS.keys()) + [
@@ -180,6 +193,25 @@ BOOL_FIELDS.update({
 
 def topic_to_measurement(topic: str) -> str:
     return topic.replace("/", "_")
+
+
+def flatten_windows(payload: dict) -> dict:
+    """Flatten nested windows JSON for Influx field/tag mapping."""
+    flat: dict = {
+        "baseline_ready": payload.get("baseline_ready", False),
+        "ibi_buffer_size": payload.get("ibi_buffer_size", 0),
+        "motion_class": payload.get("motion_class"),
+    }
+    for window_label, fields in payload.get("windows", {}).items():
+        if not isinstance(fields, dict):
+            continue
+        for field_name, value in fields.items():
+            key = f"{window_label}_{field_name}"
+            if field_name == "quality":
+                flat[key] = value
+            elif value is not None:
+                flat[key] = value
+    return flat
 
 
 class MqttInfluxLogger:
@@ -256,6 +288,9 @@ class MqttInfluxLogger:
 
         topic = msg.topic
         measurement = topic_to_measurement(topic)
+
+        if topic == "biofizic/state/windows":
+            data = flatten_windows(data)
 
         # Timestamp din payload daca exista, altfel now
         ts_ms = data.get("ts")

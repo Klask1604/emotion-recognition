@@ -24,7 +24,7 @@ from typing import Sequence
 import numpy as np
 
 from biofizic.adaptive_motion import AdaptiveMotionBaseline, motion_z as compute_motion_z
-from biofizic.paths import motion_model_path as default_motion_model_path
+from biofizic.config import motion_model_path as default_motion_model_path
 
 SCHEMA_VERSION = 4
 

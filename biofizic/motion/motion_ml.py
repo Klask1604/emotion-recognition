@@ -27,7 +27,7 @@ class MotionHarModel:
     """Load WISDM-trained RF or fall back to threshold rules."""
 
     def __init__(self, model_path: Path | None = None) -> None:
-        from biofizic.paths import models_dir
+        from biofizic.config import models_dir
 
         path = model_path or (models_dir() / "motion_har_wisdm.joblib")
         self._available = path.exists()

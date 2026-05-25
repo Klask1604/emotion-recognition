@@ -1,11 +1,56 @@
-"""Rolling IBI and PPG buffers fed by 1 Hz watch batches."""
+"""Compute HRV metrics for multiple window lengths and rolling buffers."""
 
 from __future__ import annotations
 
 from collections import deque
 
-from biofizic.constants.hrv import IBI_BUFFER_RETENTION_MS
-from biofizic.types.samples import InterbeatIntervalEntry, IbiBatchMessage, PpgBatchMessage
+from biofizic.config import ANALYSIS_WINDOW_SECONDS, IBI_BUFFER_RETENTION_MS
+from biofizic.features.hrv_metrics import compute_hrv_from_entries
+from biofizic.signal import parse_intervals_from_payload
+from biofizic.types import (
+    HrvMetrics,
+    IbiBatchMessage,
+    InterbeatIntervalEntry,
+    MultiWindowHrvResult,
+    PpgBatchMessage,
+)
+
+
+class MultiWindowProcessor:
+    """Runs the same HRV pipeline on 15, 30, 60, and 90 second lookbacks."""
+
+    def __init__(
+        self,
+        window_seconds: tuple[int, ...] = ANALYSIS_WINDOW_SECONDS,
+    ) -> None:
+        self._window_seconds = window_seconds
+
+    def compute(
+        self,
+        entries: list[InterbeatIntervalEntry],
+        *,
+        end_timestamp_ms: int | None = None,
+    ) -> MultiWindowHrvResult:
+        results: dict[int, HrvMetrics | None] = {}
+        for seconds in self._window_seconds:
+            span_ms = seconds * 1000
+            if end_timestamp_ms is not None and end_timestamp_ms > 0:
+                cutoff = end_timestamp_ms - span_ms
+                window_entries = [
+                    e
+                    for e in entries
+                    if e.timestamp_ms is None or e.timestamp_ms >= cutoff
+                ]
+            else:
+                window_entries = entries
+            results[seconds] = compute_hrv_from_entries(window_entries)
+
+        return MultiWindowHrvResult(
+            window_15_seconds=results.get(15),
+            window_30_seconds=results.get(30),
+            window_60_seconds=results.get(60),
+            window_90_seconds=results.get(90),
+        )
 
 
 class RollingIbiBuffer:
@@ -32,8 +77,6 @@ class RollingIbiBuffer:
         self._trim(batch.timestamp_ms)
 
     def ingest_epoch_payload(self, data: dict) -> None:
-        from biofizic.signal.ibi_cleaner import parse_intervals_from_payload
-
         for entry in parse_intervals_from_payload(data):
             self._entries.append(entry)
         ts = int(data.get("ts") or 0)

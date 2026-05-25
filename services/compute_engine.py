@@ -3,7 +3,7 @@
 Unified compute engine: MQTT ingestion -> physiology pipeline -> state output.
 
 Replaces classifier-v2, solid-engine, and live-context with one service.
-Publishes biofizic/state, biofizic/state/live, and biofizic/combined (no fusion service).
+Publishes biofizic/state, biofizic/state/live, biofizic/state/windows, and biofizic/combined.
 """
 
 from __future__ import annotations
@@ -25,9 +25,10 @@ import argparse
 
 import paho.mqtt.client as mqtt
 
-from biofizic.constants.hrv import EPOCH_PUBLISH_INTERVAL_SECONDS, PRIMARY_DECISION_WINDOW_SECONDS
-from biofizic.pipeline.physiology_pipeline import PhysiologyPipeline
-from biofizic.types.samples import IbiBatchMessage, PpgBatchMessage, PhysiologyDecision, SensorBatchMessage
+from biofizic.config import EPOCH_PUBLISH_INTERVAL_SECONDS, PRIMARY_DECISION_WINDOW_SECONDS
+from biofizic.pipeline import PhysiologyPipeline
+from biofizic.types import MultiWindowResult, WindowResult
+from biofizic.types import IbiBatchMessage, PpgBatchMessage, PhysiologyDecision, SensorBatchMessage
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,12 +39,15 @@ log = logging.getLogger("compute_engine")
 
 MOTION_CODE = {"STILL": 0, "SCROLL": 1, "HAND": 2, "WALK": 3}
 QUADRANT_CODE = {"calm": 1, "activated": 2, "tense": 3, "depleted": 4}
+WINDOWS_PUBLISH_INTERVAL_SECONDS = 5.0
+_BEST_WINDOW_SECONDS = {"w30": 30, "w60": 60, "w90": 90}
 
 
 class ComputeEngineService:
     def __init__(self, broker: str, port: int) -> None:
         self.pipeline = PhysiologyPipeline()
         self._last_live_at = 0.0
+        self._last_windows_at = 0.0
         self._last_epoch_at = 0.0
         self.client = mqtt.Client(
             client_id="biofizic_compute",
@@ -161,22 +165,63 @@ class ComputeEngineService:
             )
             self.pipeline.ingest_sensor_batch(batch)
 
+        publish_epoch = now - self._last_epoch_at >= EPOCH_PUBLISH_INTERVAL_SECONDS
+        if publish_epoch:
+            self._last_epoch_at = now
+
+        result = self.pipeline.run(now=now, publish_epoch=publish_epoch)
+
         if now - self._last_live_at >= 1.0:
             self._last_live_at = now
-            decision = self.pipeline.run_live_tick(now=now)
-            if decision:
-                self._publish_state(client, decision, live=True)
+            self._publish_live(client, result)
 
-        if now - self._last_epoch_at >= EPOCH_PUBLISH_INTERVAL_SECONDS:
-            self._last_epoch_at = now
-            decision = self.pipeline.run_epoch_tick(now=now)
-            if decision:
-                self._publish_state(client, decision, live=False)
-                self._publish_combined(client, decision)
+        if now - self._last_windows_at >= WINDOWS_PUBLISH_INTERVAL_SECONDS:
+            self._last_windows_at = now
+            self._publish_windows(client, result)
 
-    def _decision_payload(self, decision: PhysiologyDecision, *, live: bool) -> dict:
+        if publish_epoch and result.decision:
+            self._publish_state(client, result.decision, live=False, result=result)
+            self._publish_combined(client, result.decision)
+
+    @staticmethod
+    def _window_payload(window: WindowResult) -> dict:
+        if window.quality == "unavailable":
+            return {
+                "rmssd": None,
+                "sdnn": None,
+                "pnn50": None,
+                "stress_index": None,
+                "mean_hr": None,
+                "quality": window.quality,
+                "ibi_count": window.ibi_count,
+                "covered_seconds": round(window.covered_seconds, 1),
+            }
+        return {
+            "rmssd": round(window.rmssd_ms, 1),
+            "sdnn": round(window.sdnn_ms, 1),
+            "pnn50": round(window.pnn50_pct, 1),
+            "stress_index": round(window.kubios_stress_index, 3),
+            "mean_hr": round(window.mean_hr_bpm, 1),
+            "quality": window.quality,
+            "ibi_count": window.ibi_count,
+            "covered_seconds": round(window.covered_seconds, 1),
+        }
+
+    def _decision_payload(
+        self,
+        decision: PhysiologyDecision,
+        *,
+        live: bool,
+        result: MultiWindowResult | None = None,
+    ) -> dict:
         multi = decision.multi_window
         sensor = self.pipeline.state.last_sensor
+        window_sec = PRIMARY_DECISION_WINDOW_SECONDS
+        if result is not None:
+            window_sec = _BEST_WINDOW_SECONDS.get(result.best_window_label, window_sec)
+        elif live:
+            window_sec = 15
+
         payload = {
             "ts": int(time.time() * 1000),
             "live": live,
@@ -208,8 +253,12 @@ class ComputeEngineService:
             "profile_ready": decision.baseline_ready,
             "baseline_ready": decision.baseline_ready,
             "why": decision.decision_reason,
-            "window_sec": PRIMARY_DECISION_WINDOW_SECONDS if not live else 15,
+            "window_sec": window_sec,
         }
+        if result is not None:
+            payload["window_used"] = result.best_window_label
+            payload["data_quality"] = result.best.quality
+            payload["ibi_buffer_size"] = result.ibi_buffer_size
         if multi:
             for suffix, metrics in (
                 ("w15", multi.window_15_seconds),
@@ -222,8 +271,52 @@ class ComputeEngineService:
                     payload[f"stress_index_{suffix}"] = round(metrics.kubios_stress_index, 3)
         return payload
 
-    def _publish_state(self, client, decision: PhysiologyDecision, *, live: bool) -> None:
-        payload = self._decision_payload(decision, live=live)
+    def _publish_live(self, client, result: MultiWindowResult) -> None:
+        decision = result.decision
+        if decision:
+            payload = self._decision_payload(decision, live=True, result=result)
+        else:
+            payload = {
+                "ts": int(time.time() * 1000),
+                "live": True,
+                "engine": "compute",
+                "window_used": result.best_window_label,
+                "data_quality": result.best.quality,
+                "ibi_buffer_size": result.ibi_buffer_size,
+                "motion_class": result.motion_class,
+                "baseline_ready": result.baseline_ready,
+                "arousal_10": None,
+                "valence_10": None,
+                "stress_index": None,
+                "rmssd": None,
+                "mean_hr": None,
+                "window_sec": _BEST_WINDOW_SECONDS.get(result.best_window_label, 30),
+            }
+        client.publish("biofizic/state/live", json.dumps(payload), qos=0)
+
+    def _publish_windows(self, client, result: MultiWindowResult) -> None:
+        payload = {
+            "ts": int(time.time() * 1000),
+            "windows": {
+                "w30": self._window_payload(result.w30),
+                "w60": self._window_payload(result.w60),
+                "w90": self._window_payload(result.w90),
+            },
+            "motion_class": result.motion_class,
+            "baseline_ready": result.baseline_ready,
+            "ibi_buffer_size": result.ibi_buffer_size,
+        }
+        client.publish("biofizic/state/windows", json.dumps(payload), qos=0)
+
+    def _publish_state(
+        self,
+        client,
+        decision: PhysiologyDecision,
+        *,
+        live: bool,
+        result: MultiWindowResult | None = None,
+    ) -> None:
+        payload = self._decision_payload(decision, live=live, result=result)
         topic = "biofizic/state/live" if live else "biofizic/state"
         client.publish(topic, json.dumps(payload), qos=1 if not live else 0)
 

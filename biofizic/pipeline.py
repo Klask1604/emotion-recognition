@@ -6,8 +6,8 @@ import logging
 import time
 from dataclasses import dataclass, field
 
-from biofizic.baseline.rest_baseline import RestBaselineStore
-from biofizic.constants.hrv import PRIMARY_DECISION_WINDOW_SECONDS
+from biofizic.baseline import RestBaselineStore
+from biofizic.config import motion_model_path
 from biofizic.context_engine import ActivityContextEngine
 from biofizic.decision.alert_confirmation import AlertConfirmationGate
 from biofizic.decision.arousal_mapper import (
@@ -22,22 +22,29 @@ from biofizic.features.hrv_metrics import (
     compute_hrv_from_mqtt_payload,
     warn_if_watch_server_rmssd_mismatch,
 )
-from biofizic.logging.human_log import format_decision_block
+from biofizic.logging import format_decision_block
 from biofizic.motion.motion_features import MotionFeatureVector
 from biofizic.motion.motion_ml import MotionHarModel
-from biofizic.paths import motion_model_path
-from biofizic.types.samples import (
+from biofizic.types import (
+    HrvMetrics,
     IbiBatchMessage,
+    MultiWindowHrvResult,
+    MultiWindowResult,
     PhysiologyDecision,
     PpgBatchMessage,
     SensorBatchMessage,
+    WindowResult,
 )
-from biofizic.windows.multi_window_processor import MultiWindowProcessor
-from biofizic.windows.rolling_buffers import RollingIbiBuffer, RollingPpgBuffer
+from biofizic.windows import MultiWindowProcessor, RollingIbiBuffer, RollingPpgBuffer
 
 log = logging.getLogger("physiology_pipeline")
 
 Z_PULSE_AMP_STALE_SEC = 90.0
+_WINDOW_METRICS = {
+    "w30": lambda m: m.window_30_seconds,
+    "w60": lambda m: m.window_60_seconds,
+    "w90": lambda m: m.window_90_seconds,
+}
 
 
 @dataclass
@@ -115,47 +122,35 @@ class PhysiologyPipeline:
             return 0.0
         return self.state.z_pulse_amp
 
-    def run_live_tick(self, *, now: float | None = None) -> PhysiologyDecision | None:
-        """1 Hz tick: use 15s window for live preview."""
-        return self._run_decision(window_seconds=15, publish_epoch=False, now=now)
-
-    def run_epoch_tick(self, *, now: float | None = None) -> PhysiologyDecision | None:
-        """30s tick: primary UI decision."""
-        return self._run_decision(
-            window_seconds=PRIMARY_DECISION_WINDOW_SECONDS,
-            publish_epoch=True,
-            now=now,
+    @staticmethod
+    def _window_result_from_metrics(metrics: HrvMetrics | None) -> WindowResult:
+        if metrics is None or metrics.beat_count < 2:
+            return WindowResult.unavailable()
+        quality = "full" if metrics.is_valid else "partial"
+        return WindowResult(
+            rmssd_ms=metrics.rmssd_ms,
+            sdnn_ms=metrics.sdnn_ms,
+            pnn50_pct=metrics.pnn50_percent,
+            kubios_stress_index=metrics.kubios_stress_index,
+            mean_hr_bpm=metrics.mean_heart_rate_bpm,
+            quality=quality,
+            ibi_count=metrics.beat_count,
+            covered_seconds=metrics.covered_seconds,
         )
 
-    def _run_decision(
-        self,
-        *,
-        window_seconds: int,
-        publish_epoch: bool,
-        now: float | None,
-    ) -> PhysiologyDecision | None:
-        now_ts = now if now is not None else time.time()
-        sensor = self.state.last_sensor
-        end_ms = int(sensor.timestamp_ms) if sensor else int(now_ts * 1000)
+    @staticmethod
+    def _cascade_best(
+        results: dict[str, WindowResult],
+    ) -> tuple[WindowResult, str]:
+        for label in ("w90", "w60", "w30"):
+            if results[label].quality == "full":
+                return results[label], label
+        for label in ("w60", "w30"):
+            if results[label].quality == "partial":
+                return results[label], label
+        return results["w30"], "w30"
 
-        all_entries = self.ibi_buffer.entries_in_last_ms(
-            90_000, end_ms=end_ms
-        )
-        if len(all_entries) < 2:
-            return None
-
-        multi = self.multi_window.compute(all_entries, end_timestamp_ms=end_ms)
-        primary = {
-            15: multi.window_15_seconds,
-            30: multi.window_30_seconds,
-            60: multi.window_60_seconds,
-            90: multi.window_90_seconds,
-        }.get(window_seconds) or multi.window_30_seconds
-
-        if primary is None or not primary.is_valid:
-            return None
-
-        activity = self._activity
+    def _predict_motion(self, sensor: SensorBatchMessage | None):
         motion_feat = MotionFeatureVector.from_epoch_dict(
             {
                 "acc_rms": sensor.acceleration_rms if sensor else 0,
@@ -166,10 +161,87 @@ class PhysiologyPipeline:
                 "gyro_std": sensor.gyroscope_std if sensor else 0,
             }
         )
-        motion = self.har_model.predict(motion_feat)
+        return self.har_model.predict(motion_feat)
 
-        if motion.motion_class == "STILL":
-            self.baseline.observe_still(primary.rmssd_ms, primary.kubios_stress_index)
+    def run(
+        self,
+        *,
+        now: float | None = None,
+        publish_epoch: bool = False,
+    ) -> MultiWindowResult:
+        """Always returns a result; decision may be None when best window is unavailable."""
+        now_ts = now if now is not None else time.time()
+        sensor = self.state.last_sensor
+        end_ms = int(sensor.timestamp_ms) if sensor else int(now_ts * 1000)
+
+        all_entries = self.ibi_buffer.entries_in_last_ms(90_000, end_ms=end_ms)
+        buf_size = len(all_entries)
+
+        if buf_size >= 2:
+            multi = self.multi_window.compute(all_entries, end_timestamp_ms=end_ms)
+        else:
+            multi = MultiWindowHrvResult(None, None, None, None)
+
+        w30 = self._window_result_from_metrics(multi.window_30_seconds)
+        w60 = self._window_result_from_metrics(multi.window_60_seconds)
+        w90 = self._window_result_from_metrics(multi.window_90_seconds)
+        window_map = {"w30": w30, "w60": w60, "w90": w90}
+        best, best_label = self._cascade_best(window_map)
+
+        motion = self._predict_motion(sensor)
+
+        if (
+            motion.motion_class == "STILL"
+            and multi.window_30_seconds is not None
+            and multi.window_30_seconds.beat_count >= 2
+        ):
+            w30m = multi.window_30_seconds
+            self.baseline.observe_still(w30m.rmssd_ms, w30m.kubios_stress_index)
+
+        decision = None
+        if best.quality != "unavailable":
+            primary = _WINDOW_METRICS[best_label](multi)
+            if primary is not None and primary.beat_count >= 2:
+                decision = self._build_decision(
+                    primary=primary,
+                    multi=multi,
+                    motion=motion,
+                    publish_epoch=publish_epoch,
+                    now_ts=now_ts,
+                )
+
+        self.state.last_decision_at = now_ts
+        return MultiWindowResult(
+            ts=now_ts,
+            w30=w30,
+            w60=w60,
+            w90=w90,
+            best=best,
+            best_window_label=best_label,
+            decision=decision,
+            ibi_buffer_size=buf_size,
+            motion_class=motion.motion_class,
+            baseline_ready=self.baseline.is_ready,
+        )
+
+    def run_live_tick(self, *, now: float | None = None) -> PhysiologyDecision | None:
+        """Backward-compatible wrapper; prefer run()."""
+        return self.run(now=now).decision
+
+    def run_epoch_tick(self, *, now: float | None = None) -> PhysiologyDecision | None:
+        """Backward-compatible wrapper; prefer run(publish_epoch=True)."""
+        return self.run(now=now, publish_epoch=True).decision
+
+    def _build_decision(
+        self,
+        *,
+        primary: HrvMetrics,
+        multi: MultiWindowHrvResult,
+        motion,
+        publish_epoch: bool,
+        now_ts: float,
+    ) -> PhysiologyDecision:
+        activity = self._activity
 
         stress_z = (
             self.baseline.stress_index_z_score(primary.kubios_stress_index)
@@ -257,7 +329,6 @@ class PhysiologyPipeline:
         if publish_epoch:
             log.info(format_decision_block(decision))
 
-        self.state.last_decision_at = now_ts
         return decision
 
     def reset_baseline(self) -> None:

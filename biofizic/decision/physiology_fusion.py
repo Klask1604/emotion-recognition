@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from biofizic.constants.kubios_zones import STRESS_INDEX_Z_ALERT, STRESS_INDEX_Z_ALERT_STRONG
-from biofizic.constants.motion import HAR_AROUSAL_CAP_BY_CLASS
+from biofizic.config import STRESS_INDEX_Z_ALERT, STRESS_INDEX_Z_ALERT_STRONG
+from biofizic.config import HAR_AROUSAL_CAP_BY_CLASS
 from biofizic.decision.arousal_mapper import (
     arousal_scale_10_to_label,
     kubios_zone_for_stress_index,

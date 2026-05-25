@@ -18,14 +18,14 @@ import logging
 
 import numpy as np
 
-from biofizic.constants.hrv import BAEVSKY_HISTOGRAM_BIN_MS
-from biofizic.signal.ibi_cleaner import (
+from biofizic.config import BAEVSKY_HISTOGRAM_BIN_MS
+from biofizic.signal import (
     filter_physiological_intervals,
     parse_intervals_from_payload,
     successive_interval_differences,
     trim_entries_to_lookback,
 )
-from biofizic.types.samples import HrvMetrics, InterbeatIntervalEntry
+from biofizic.types import HrvMetrics, InterbeatIntervalEntry
 
 log = logging.getLogger("hrv_metrics")
 
@@ -99,7 +99,7 @@ def compute_hrv_from_mqtt_payload(data: dict) -> HrvMetrics | None:
         return None
     ts_end = data.get("ts")
     ts_ms = int(ts_end) if ts_end is not None and int(ts_end) > 0 else None
-    from biofizic.constants.hrv import IBI_LOOKBACK_TRIM_MS
+    from biofizic.config import IBI_LOOKBACK_TRIM_MS
 
     entries = trim_entries_to_lookback(
         entries, end_timestamp_ms=ts_ms, max_span_ms=IBI_LOOKBACK_TRIM_MS

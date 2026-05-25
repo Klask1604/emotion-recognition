@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from biofizic.constants.kubios_zones import (
+from biofizic.config import (
     STRESS_INDEX_ZONE_BOUNDS,
     KubiosZone,
     KubiosZoneId,
@@ -61,7 +61,7 @@ def arousal_scale_10_to_label(scale_10: int) -> str:
 
 
 def baseline_z_score_to_label(z_score: float, *, baseline_ready: bool) -> str:
-    from biofizic.constants.kubios_zones import (
+    from biofizic.config import (
         STRESS_INDEX_Z_ALERT,
         STRESS_INDEX_Z_ALERT_STRONG,
     )

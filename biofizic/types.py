@@ -1,4 +1,4 @@
-"""Structured samples passed between pipeline stages."""
+"""Structured samples and multi-window pipeline result types."""
 
 from __future__ import annotations
 
@@ -63,10 +63,7 @@ class HrvMetrics:
 
     @property
     def is_valid(self) -> bool:
-        from biofizic.constants.hrv import (
-            MIN_BEATS_FOR_HRV,
-            MIN_COVERED_SECONDS_FOR_HRV,
-        )
+        from biofizic.config import MIN_BEATS_FOR_HRV, MIN_COVERED_SECONDS_FOR_HRV
 
         return (
             self.beat_count >= MIN_BEATS_FOR_HRV
@@ -108,3 +105,42 @@ class PhysiologyDecision:
     valence_label: str = "neutral"
     affect_quadrant: str = "calm"
     z_pulse_amp: float = 0.0
+
+
+@dataclass
+class WindowResult:
+    rmssd_ms: float
+    sdnn_ms: float
+    pnn50_pct: float
+    kubios_stress_index: float
+    mean_hr_bpm: float
+    quality: str  # "full" | "partial" | "unavailable"
+    ibi_count: int
+    covered_seconds: float
+
+    @staticmethod
+    def unavailable() -> WindowResult:
+        return WindowResult(
+            rmssd_ms=0.0,
+            sdnn_ms=0.0,
+            pnn50_pct=0.0,
+            kubios_stress_index=0.0,
+            mean_hr_bpm=0.0,
+            quality="unavailable",
+            ibi_count=0,
+            covered_seconds=0.0,
+        )
+
+
+@dataclass
+class MultiWindowResult:
+    ts: float
+    w30: WindowResult
+    w60: WindowResult
+    w90: WindowResult
+    best: WindowResult
+    best_window_label: str  # "w30" | "w60" | "w90"
+    decision: PhysiologyDecision | None
+    ibi_buffer_size: int
+    motion_class: str
+    baseline_ready: bool

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from biofizic.constants.hrv import (
+from biofizic.config import (
     MAX_INTERBEAT_INTERVAL_MS,
     MAX_TIMESTAMP_IBI_MISMATCH_MS,
     MIN_INTERBEAT_INTERVAL_MS,
     OUTLIER_MEDIAN_DEVIATION_RATIO,
 )
-from biofizic.types.samples import InterbeatIntervalEntry
+from biofizic.types import InterbeatIntervalEntry
 
 
 def parse_intervals_from_payload(data: dict) -> list[InterbeatIntervalEntry]:

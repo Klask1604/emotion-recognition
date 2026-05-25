@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from biofizic.types.samples import MultiWindowHrvResult, PhysiologyDecision
+from biofizic.types import MultiWindowHrvResult, PhysiologyDecision
 
 
 def format_physiology_line(decision: PhysiologyDecision) -> str:
