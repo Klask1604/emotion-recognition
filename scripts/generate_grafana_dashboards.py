@@ -496,6 +496,106 @@ def build_window_comparison_dashboard() -> dict:
     )
 
 
+def build_stream_sync_dashboard() -> dict:
+    """
+    Diagnostic dashboard for the acquisition/batch v2 atomic sync.
+
+    The thesis claims IBI, PPG and motion are bundled with a shared ts_anchor
+    so the server can run HRV math on data from the same time window. These
+    panels make that visible: anchor_delay_ms should stay positive (or zero
+    when no fresher stream is available), seq should increment by 1 every
+    second, and the per-batch ibi_count / ppg_count traces show the bursty
+    nature of the HR stream that motivated the design in the first place.
+    """
+    panels = [
+        stat_panel(
+            1,
+            "Last anchor delay (ms)",
+            "SELECT anchor_delay_ms AS v FROM biofizic_acquisition_batch "
+            "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            0, 0, w=6, decimals=0,
+        ),
+        stat_panel(
+            2,
+            "Last seq",
+            "SELECT seq AS v FROM biofizic_acquisition_batch "
+            "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            6, 0, w=6, decimals=0,
+        ),
+        stat_panel(
+            3,
+            "Last IBI count",
+            "SELECT ibi_count AS v FROM biofizic_acquisition_batch "
+            "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            12, 0, w=6, decimals=0,
+        ),
+        stat_panel(
+            4,
+            "Last PPG count",
+            "SELECT ppg_count AS v FROM biofizic_acquisition_batch "
+            "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            18, 0, w=6, decimals=0,
+        ),
+        ts_panel(
+            5,
+            "Atomic anchor delay (ts_anchor - ts_publish) [ms]",
+            4,
+            "SELECT time, anchor_delay_ms FROM biofizic_acquisition_batch "
+            "WHERE $__timeFilter(time) ORDER BY time",
+            h=7,
+            unit="ms",
+            decimals=0,
+        ),
+        ts_panel(
+            6,
+            "IBI count per batch (Samsung HR bursts every ~4 s)",
+            11,
+            "SELECT time, ibi_count FROM biofizic_acquisition_batch "
+            "WHERE $__timeFilter(time) ORDER BY time",
+            h=7,
+            min_v=0,
+            decimals=0,
+        ),
+        ts_panel(
+            7,
+            "PPG samples per batch (target ~25 per second)",
+            18,
+            "SELECT time, ppg_count FROM biofizic_acquisition_batch "
+            "WHERE $__timeFilter(time) ORDER BY time",
+            h=7,
+            min_v=0,
+            decimals=0,
+        ),
+        ts_panel(
+            8,
+            "Skin temp age at publish [ms]",
+            25,
+            "SELECT time, skin_temp_age_ms FROM biofizic_acquisition_batch "
+            "WHERE $__timeFilter(time) AND skin_temp_age_ms IS NOT NULL ORDER BY time",
+            h=6,
+            unit="ms",
+            decimals=0,
+        ),
+        ts_panel(
+            9,
+            "Sequence number (should increment by 1 per second)",
+            31,
+            "SELECT time, seq FROM biofizic_acquisition_batch "
+            "WHERE $__timeFilter(time) ORDER BY time",
+            h=5,
+            decimals=0,
+        ),
+    ]
+    return dashboard_meta(
+        "biofizic-stream-sync",
+        "Biofizic Stream Sync Diagnostics",
+        ["biofizic", "diagnostics", "atomic-sync"],
+        panels,
+        version=1,
+        refresh="5s",
+    )
+
+
 def build_session_overview_dashboard() -> dict:
     panels = [
         ts_panel(
@@ -565,6 +665,7 @@ def main() -> None:
         "biofizic-motion-har.json": build_motion_dashboard(),
         "biofizic-live-overview.json": build_overview_dashboard(),
         "biofizic-window-comparison.json": build_window_comparison_dashboard(),
+        "biofizic-stream-sync.json": build_stream_sync_dashboard(),
         "biofizic-session-overview.json": build_session_overview_dashboard(),
     }
     for name, body in dashboards.items():

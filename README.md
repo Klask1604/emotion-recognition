@@ -134,6 +134,19 @@ python -m pytest tests/ -v
 The suite runs in under 2 seconds and has no external dependencies (no MQTT
 broker, no InfluxDB needed).
 
+## Validation runbook
+
+A four-layer validation workflow (math unit tests, atomic-sync unit tests,
+live diagnostic dashboard, offline replay reproducibility) is documented in
+[`docs/VALIDATION.md`](docs/VALIDATION.md). Use that for thesis defence.
+
+Record and replay a session offline with:
+
+```bash
+python tools/record_session.py --output session.jsonl --duration 300
+python tools/replay_session.py session.jsonl --broker localhost
+```
+
 ## Grafana dashboards
 
 | UID | Purpose |
@@ -141,6 +154,7 @@ broker, no InfluxDB needed).
 | `biofizic-live-overview` | Arousal + Kubios label from `biofizic_state_live` (1 Hz) |
 | `biofizic-hrv-analysis` | Multi-window RMSSD / stress index |
 | `biofizic-baseline-compare` | Kubios vs personal baseline |
+| `biofizic-stream-sync` | Atomic-sync diagnostics: anchor delay, IBI/PPG count per batch, seq increment |
 | `biofizic-session-overview` | Full session timeline |
 | `biofizic-ppg-pipeline` | Raw PPG reception + motion gate |
 | `biofizic-motion-har` | HAR class + acceleration |

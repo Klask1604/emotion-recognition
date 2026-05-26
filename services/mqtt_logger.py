@@ -104,6 +104,9 @@ FLOAT_FIELDS.update({
     "biofizic/acquisition/batch": [
         "hr", "skin_temp", "ambient_temp",
         "acc_rms", "acc_p90", "acc_std", "gyro_rms", "gyro_p90", "gyro_std",
+        # Atomic-sync diagnostics, plotted by biofizic-stream-sync dashboard.
+        "ts_publish", "ts_anchor", "anchor_delay_ms", "skin_temp_age_ms",
+        "seq", "ibi_count", "ppg_count",
     ],
 })
 
@@ -132,15 +135,34 @@ def flatten_windows(payload: dict) -> dict:
 
 
 def flatten_acquisition(payload: dict) -> dict:
-    """Flatten nested motion scalars for Influx (arrays omitted)."""
+    """
+    Flatten the nested acquisition/batch payload for InfluxDB. Adds two
+    derived diagnostic fields that the stream-sync dashboard plots:
+
+      anchor_delay_ms = ts_anchor - ts_publish
+          How far ahead of the publish moment the freshest stream sample is.
+          A positive value confirms ts_anchor is acting as the atomic anchor.
+      skin_temp_age_ms = ts_publish - skin_temp_ts
+          How old the most recent skin temperature reading is at publish.
+          Useful to see that slow-rate streams are still inside the batch.
+    """
+    ts_publish = payload.get("ts_publish")
+    ts_anchor = payload.get("ts_anchor")
+    skin_temp_ts = payload.get("skin_temp_ts")
     flat: dict = {
-        "ts": payload.get("ts_publish") or payload.get("ts_anchor"),
+        "ts": ts_publish or ts_anchor,
+        "ts_publish": ts_publish,
+        "ts_anchor": ts_anchor,
         "hr": payload.get("hr"),
         "skin_temp": payload.get("skin_temp"),
         "ambient_temp": payload.get("ambient_temp"),
         "display_on": payload.get("display_on"),
         "seq": payload.get("seq"),
     }
+    if isinstance(ts_publish, (int, float)) and isinstance(ts_anchor, (int, float)):
+        flat["anchor_delay_ms"] = int(ts_anchor) - int(ts_publish)
+    if isinstance(ts_publish, (int, float)) and isinstance(skin_temp_ts, (int, float)) and skin_temp_ts > 0:
+        flat["skin_temp_age_ms"] = int(ts_publish) - int(skin_temp_ts)
     motion = payload.get("motion") or {}
     for key in ("acc_rms", "acc_p90", "acc_std", "gyro_rms", "gyro_p90", "gyro_std"):
         if key in motion:

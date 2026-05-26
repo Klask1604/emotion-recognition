@@ -76,7 +76,12 @@ WINDOWS_PUBLISH_INTERVAL_SECONDS = 5.0
 # been seen for LIVE_AROUSAL_HYSTERESIS_TICKS consecutive ticks. Epoch
 # decisions on biofizic/state stay reactive (no smoothing) so logs reflect
 # the raw HRV at that tick.
-LIVE_AROUSAL_HYSTERESIS_TICKS = 2
+#
+# Value chosen as 3 after observing that 2 still let pure 2-tick transitions
+# through. With 3 a new integer must persist three live ticks (~3 s of wall
+# clock) before the watch UI adopts it, which kills the 2-3-2-3 alternation
+# while keeping real transitions visible within 3 s.
+LIVE_AROUSAL_HYSTERESIS_TICKS = 3
 
 
 # ---------------------------------------------------------------------------

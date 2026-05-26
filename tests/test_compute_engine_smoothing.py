@@ -36,11 +36,23 @@ def test_sustained_change_flips_after_required_streak():
     # Settle at 3, then push 4 sustained.
     for _ in range(5):
         assert svc._update_live_arousal_hysteresis(3) == 3
-    # The first 4 ticks of the new value should not flip yet.
+    # The first N-1 ticks of the new value should not flip yet.
     for _ in range(LIVE_AROUSAL_HYSTERESIS_TICKS - 1):
         assert svc._update_live_arousal_hysteresis(4) == 3
     # The Nth confirms and flips.
     assert svc._update_live_arousal_hysteresis(4) == 4
+
+
+def test_two_tick_blip_does_not_flip_at_hysteresis_3():
+    """With LIVE_AROUSAL_HYSTERESIS_TICKS=3 a two-tick blip stays hidden."""
+    svc = _fresh_service()
+    for _ in range(3):
+        assert svc._update_live_arousal_hysteresis(5) == 5
+    # Two ticks of 7 is not enough to flip if hysteresis is at least 3.
+    if LIVE_AROUSAL_HYSTERESIS_TICKS >= 3:
+        assert svc._update_live_arousal_hysteresis(7) == 5
+        assert svc._update_live_arousal_hysteresis(7) == 5
+        assert svc._update_live_arousal_hysteresis(5) == 5
 
 
 def test_isolated_spike_is_ignored():

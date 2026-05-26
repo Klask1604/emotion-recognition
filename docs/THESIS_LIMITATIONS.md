@@ -20,7 +20,7 @@ limitations.
 | `BASELINE_EMA_ALPHA` | 0.05 | Speed of the rest-baseline EMA |
 | `ALERT_CONFIRMATION_EPOCH_COUNT` | 2 | Consecutive elevated epochs before a full alert |
 | `ALERT_PENDING_CAP` | 6 | Cap on the displayed arousal_10 while an alert is being confirmed |
-| `LIVE_AROUSAL_HYSTERESIS_TICKS` | 2 | Consecutive live ticks required before the watch UI adopts a new integer |
+| `LIVE_AROUSAL_HYSTERESIS_TICKS` | 3 | Consecutive live ticks required before the watch UI adopts a new integer. Two ticks of agreement turned out to still let pure 2-tick alternations through. |
 | `REST_ACCELERATION_P90_MAX` | 0.5 m/s^2 | Rest gate together with HAR STILL |
 | HAR gating set | STILL / SCROLL / HAND / WALK | Heuristic; wrist motion contaminates PPG |
 

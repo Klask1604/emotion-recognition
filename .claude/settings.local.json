@@ -7,7 +7,12 @@
       "Bash(venv/Scripts/python.exe -m pip show pytest)",
       "Bash(venv/Scripts/python.exe -m pip install pytest)",
       "Bash(venv/Scripts/python.exe -m pytest --version)",
-      "Bash(venv/Scripts/python.exe -m pytest tests/ -v)"
+      "Bash(venv/Scripts/python.exe -m pytest tests/ -v)",
+      "Bash(./gradlew :app:testDebugUnitTest --offline)",
+      "Bash(./gradlew :app:testDebugUnitTest)",
+      "Bash(venv/Scripts/python.exe -c \"import services.mqtt_logger; print\\('mqtt_logger imports clean'\\)\")",
+      "Bash(./gradlew :app:compileDebugKotlin)",
+      "Bash(./gradlew :app:compileDebugKotlin :app:testDebugUnitTest)"
     ]
   }
 }
