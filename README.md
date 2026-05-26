@@ -121,6 +121,19 @@ Human-readable decision logs when running compute-engine:
 [BASELINE] ready=yes | personal_stress_index=10.2 | z_score=+0.45 | labels_match=yes
 ```
 
+## Tests
+
+Unit tests cover IBI filtering, HRV math, Kubios zone boundaries, the decision
+gate (HAR cap, alert confirmation, rest dual-veto) and the live-arousal
+hysteresis used to fix the watch UI flicker. Run them with:
+
+```bash
+python -m pytest tests/ -v
+```
+
+The suite runs in under 2 seconds and has no external dependencies (no MQTT
+broker, no InfluxDB needed).
+
 ## Grafana dashboards
 
 | UID | Purpose |

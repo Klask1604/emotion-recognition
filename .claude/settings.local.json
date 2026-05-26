@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(venv/Scripts/python.exe scripts/generate_grafana_dashboards.py)",
-      "Bash(venv/Scripts/python.exe -c ' *)"
+      "Bash(venv/Scripts/python.exe -c ' *)",
+      "Bash(./gradlew :app:compileDebugKotlin --offline)",
+      "Bash(venv/Scripts/python.exe -m pip show pytest)",
+      "Bash(venv/Scripts/python.exe -m pip install pytest)",
+      "Bash(venv/Scripts/python.exe -m pytest --version)",
+      "Bash(venv/Scripts/python.exe -m pytest tests/ -v)"
     ]
   }
 }
