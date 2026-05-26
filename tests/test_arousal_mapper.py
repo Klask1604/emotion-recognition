@@ -1,14 +1,17 @@
-"""Kubios zone bounds and the 1-10 arousal display label mapper."""
+"""Kubios zone bounds, normal-CDF personal arousal, and label mapper."""
 
 from __future__ import annotations
 
 import pytest
 
 from biofizic.config import KubiosZoneId
-from biofizic.decision.arousal_mapper import (
+from biofizic.engine.arousal_mapper import (
     arousal_scale_10_to_label,
+    cohen_kappa,
     kubios_zone_for_stress_index,
-    stress_index_to_arousal,
+    normal_cdf,
+    personal_arousal_10,
+    population_arousal_10,
 )
 
 
@@ -30,11 +33,18 @@ def test_kubios_zone_boundaries(stress_index: float, expected_zone: KubiosZoneId
     assert kubios_zone_for_stress_index(stress_index).zone_id == expected_zone
 
 
-def test_stress_index_to_arousal_monotonic_within_band():
-    _, low, _ = stress_index_to_arousal(3.0)
-    _, mid, _ = stress_index_to_arousal(10.0)
-    _, hi, _ = stress_index_to_arousal(25.0)
-    assert low <= mid <= hi
+def test_population_arousal_increases_with_zone():
+    assert population_arousal_10(3.0) < population_arousal_10(10.0) < population_arousal_10(25.0)
+
+
+def test_personal_arousal_centered_at_baseline():
+    # z = 0 -> Phi = 0.5 -> arousal ~ 5.5 -> rounds to 5 or 6.
+    assert normal_cdf(0.0) == pytest.approx(0.5)
+    assert personal_arousal_10(0.0) in (5, 6)
+    assert personal_arousal_10(-3.0) == 1
+    assert personal_arousal_10(3.0) == 10
+    # Monotonic in z.
+    assert personal_arousal_10(-1.0) < personal_arousal_10(0.0) < personal_arousal_10(1.0)
 
 
 def test_arousal_scale_10_to_label():
@@ -43,3 +53,10 @@ def test_arousal_scale_10_to_label():
     assert arousal_scale_10_to_label(5) == "Moderat"
     assert arousal_scale_10_to_label(7) == "Alert"
     assert arousal_scale_10_to_label(9) == "Ridicat"
+
+
+def test_cohen_kappa_perfect_and_chance():
+    labels = ["Relaxat", "Moderat", "Alert", "Relaxat"]
+    assert cohen_kappa(labels, labels) == pytest.approx(1.0)
+    # Identical marginals but never matching -> kappa < 0.
+    assert cohen_kappa(["A", "B"], ["B", "A"]) < 0

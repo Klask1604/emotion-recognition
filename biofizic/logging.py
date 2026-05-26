@@ -1,39 +1,58 @@
-"""Human-readable log lines for Docker and debugging."""
+"""Human-readable decision logs for Docker / debugging.
+
+Layout per epoch:
+  [SUMMARY]  one-line verdict — the key factors, no formulas
+  [BASELINE] one decisional parameter per line
+  [QUALITY]  signal-quality / gating factors
+  [WINDOW]   multi-window RMSSD
+A blank line separates consecutive blocks.
+"""
 
 from __future__ import annotations
 
-from biofizic.types import MultiWindowHrvResult, PhysiologyDecision
+from biofizic.compute_features.results import MultiWindowHrvResult, PhysiologyDecision
+from biofizic.config import ARTIFACT_RATE_MAX
 
 
-def format_physiology_line(decision: PhysiologyDecision) -> str:
+def format_summary_line(decision: PhysiologyDecision) -> str:
+    """Epoch verdict in plain factors (no formulas)."""
+    alert = " ALERT" if decision.alert else ""
     return (
-        f"[PHYSIO] activation_level={decision.display_arousal_10}/10 "
-        f"({decision.display_label}) | "
-        f"heart_rate={decision.mean_heart_rate_bpm:.0f}bpm | "
-        f"rmssd={decision.rmssd_ms:.1f}ms | "
-        f"stress_index={decision.kubios_stress_index:.1f} ({decision.kubios_label})"
+        f"[SUMMARY] arousal {decision.display_arousal_10}/10 {decision.display_label}{alert}"
+        f" | hr {decision.mean_heart_rate_bpm:.0f} bpm"
+        f" | rmssd {decision.rmssd_ms:.0f} ms"
+        f" | stress index {decision.kubios_stress_index:.1f} ({decision.kubios_label})"
+        f" | motion {decision.motion_state}"
+        f" | confidence {decision.decision_confidence * 100:.0f}% (via {decision.dominant_channel})"
     )
 
 
-def format_baseline_line(decision: PhysiologyDecision) -> str:
-    base = decision.baseline_stress_index
-    agree = "yes" if decision.labels_agree else "no"
-    return (
-        f"[BASELINE] ready={'yes' if decision.baseline_ready else 'no'} | "
-        f"personal_stress_index={base:.1f} | "
-        f"z_score={decision.stress_index_z_score:+.2f} | "
-        f"labels_match={agree} (kubios={decision.kubios_label} "
-        f"baseline={decision.baseline_label})"
-    )
+def format_baseline_block(decision: PhysiologyDecision) -> list[str]:
+    """One decisional parameter per line."""
+    return [
+        f"[BASELINE] ready              = {'yes' if decision.baseline_ready else 'no'}",
+        f"[BASELINE] personal_stress_SI = {decision.baseline_stress_index:.1f}",
+        f"[BASELINE] z_raw HRV           = {decision.stress_index_z_score:+.2f}",
+        f"[BASELINE] z_raw HR            = {decision.hr_z_score:+.2f}",
+        f"[BASELINE] hrv_weight (fusion) = {decision.hrv_weight:.2f}  (1=still/HRV, 0=motion/HR)",
+        f"[BASELINE] z_filtered (Kalman) = {decision.stress_index_z_filtered:+.2f}",
+        f"[BASELINE] kalman_gain         = {decision.kalman_gain:.2f}  (epoch trust; low => held)",
+        f"[BASELINE] personal_label      = {decision.baseline_label}",
+        f"[BASELINE] matches_kubios      = {'yes' if decision.labels_agree else 'no'}",
+    ]
 
 
-def format_motion_line(decision: PhysiologyDecision) -> str:
-    return (
-        f"[MOTION] activity={decision.motion_class} "
-        f"conf={decision.motion_confidence:.2f} | "
-        f"context={decision.activity_mode} | "
-        f"reason={decision.decision_reason}"
-    )
+def format_quality_block(decision: PhysiologyDecision) -> list[str]:
+    return [
+        f"[QUALITY] motion        = {decision.motion_state}",
+        f"[QUALITY] motion_energy = {decision.motion_energy:.3f}",
+        f"[QUALITY] artifact_rate = {decision.artifact_rate * 100:.0f}%"
+        f"  (epoch usable if <={ARTIFACT_RATE_MAX * 100:.0f}% and still)",
+        f"[QUALITY] hrv_quality Q  = {decision.signal_quality:.2f}  (HRV-only; collapses in motion)",
+        f"[QUALITY] confidence     = {decision.decision_confidence:.2f}  (multi-channel; via {decision.dominant_channel})",
+        f"[QUALITY] alert (CUSUM) = {'YES' if decision.alert else 'no'}",
+        f"[QUALITY] reason        = {decision.decision_reason}",
+    ]
 
 
 def format_window_line(multi: MultiWindowHrvResult | None) -> str:
@@ -41,23 +60,23 @@ def format_window_line(multi: MultiWindowHrvResult | None) -> str:
         return "[WINDOW] no_data"
     parts = []
     for name, metrics in (
-        ("w15", multi.window_15_seconds),
         ("w30", multi.window_30_seconds),
         ("w60", multi.window_60_seconds),
         ("w90", multi.window_90_seconds),
     ):
         if metrics and metrics.is_valid:
-            parts.append(f"{name}:rmssd={metrics.rmssd_ms:.0f}")
+            parts.append(f"{name} rmssd={metrics.rmssd_ms:.0f}")
         else:
-            parts.append(f"{name}:--")
-    return "[WINDOW] " + " ".join(parts)
+            parts.append(f"{name} --")
+    return "[WINDOW] " + " | ".join(parts) + "   (w30 decides; w60/w90 diagnostic)"
 
 
 def format_decision_block(decision: PhysiologyDecision) -> str:
     lines = [
-        format_physiology_line(decision),
-        format_motion_line(decision),
-        format_baseline_line(decision),
+        format_summary_line(decision),
+        *format_baseline_block(decision),
+        *format_quality_block(decision),
         format_window_line(decision.multi_window),
     ]
-    return "\n".join(lines)
+    # Trailing newline => one blank line between consecutive blocks.
+    return "\n".join(lines) + "\n"

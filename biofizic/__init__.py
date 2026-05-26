@@ -1,5 +1,5 @@
 """Biofizic server-side physiology library."""
 
-from biofizic.pipeline import PhysiologyPipeline
+from biofizic.engine.pipeline import PhysiologyPipeline
 
 __all__ = ["PhysiologyPipeline"]

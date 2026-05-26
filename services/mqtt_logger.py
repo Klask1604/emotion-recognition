@@ -20,11 +20,14 @@ import biofizic._bootstrap  # noqa: F401
 import argparse
 import json
 import logging
+import queue
+import threading
+import time
 from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
 from influxdb_client import InfluxDBClient, Point
-from influxdb_client.client.write_api import ASYNCHRONOUS
+from influxdb_client.client.write_api import SYNCHRONOUS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,13 +42,15 @@ log = logging.getLogger("mqtt_logger")
 FLOAT_FIELDS: dict[str, list[str]] = {
     "biofizic/state": [
         "arousal_10", "arousal_pct", "mean_hr", "rmssd", "stress_index",
-        "baseline_si", "z_si", "motion_conf", "rmssd_w30",
-        "rmssd_w60", "rmssd_w90", "stress_index_w30",
+        "baseline_si", "z_si", "z_si_filtered", "kalman_gain",
+        "confidence", "signal_quality", "artifact_rate", "motion_energy",
+        "rmssd_w30", "rmssd_w60", "rmssd_w90", "stress_index_w30",
         "stress_index_w60", "stress_index_w90", "window_sec",
     ],
     "biofizic/state/live": [
-        "arousal_10", "arousal_pct", "mean_hr", "rmssd", "stress_index",
-        "baseline_si", "z_si", "motion_conf", "window_sec", "ibi_buffer_size",
+        "arousal_10", "arousal_10_raw", "arousal_pct", "mean_hr", "rmssd",
+        "stress_index", "baseline_si", "z_si", "signal_quality", "artifact_rate",
+        "motion_energy", "window_sec", "ibi_buffer_size",
     ],
     "biofizic/state/windows": [
         "ibi_buffer_size",
@@ -64,13 +69,13 @@ STRING_FIELDS: dict[str, list[str]] = {}
 # String fields stored as InfluxDB tags (used for Grafana filtering / coloring).
 TAG_FIELDS: dict[str, list[str]] = {
     "biofizic/state": [
-        "emotion", "emotion_baseline", "activity_mode", "motion_class", "why",
+        "emotion", "emotion_baseline", "motion_state", "why", "dominant_channel",
     ],
     "biofizic/state/live": [
-        "emotion", "activity_mode", "motion_class", "data_quality", "window_used",
+        "emotion", "motion_state", "data_quality", "window_used",
     ],
     "biofizic/state/windows": [
-        "motion_class", "w30_quality", "w60_quality", "w90_quality",
+        "motion_state", "w30_quality", "w60_quality", "w90_quality",
     ],
 }
 
@@ -80,6 +85,7 @@ BOOL_FIELDS: dict[str, list[str]] = {
         "profile_ready",
         "baseline_ready",
         "labels_agree",
+        "alert",
     ],
     "biofizic/state/live": [
         "live",
@@ -88,6 +94,23 @@ BOOL_FIELDS: dict[str, list[str]] = {
     ],
     "biofizic/state/windows": ["baseline_ready"],
 }
+
+# Pure aligned live stream (1 Hz, ts_anchor) — Live Sync / Reliability boards.
+FLOAT_FIELDS["biofizic/live"] = [
+    "hr_sdk", "mean_hr", "rmssd", "stress_index",
+    "z_hrv", "z_hr", "hrv_weight", "z_filtered", "kalman_gain", "arousal_10",
+    "confidence", "signal_quality", "artifact_rate",
+    "acc_rms", "acc_p90", "acc_std", "gyro_rms", "gyro_p90", "gyro_std", "acc_band_cardiac",
+]
+TAG_FIELDS["biofizic/live"] = ["motion_state", "dominant_channel"]
+BOOL_FIELDS["biofizic/live"] = ["alert", "baseline_ready"]
+
+# Parallel research/legacy engines (never feed VR; for comparison dashboards).
+FLOAT_FIELDS.update({
+    "biofizic/legacy/wesad": ["p_stress"],
+    "biofizic/legacy/valence": ["valence", "rmssd_z", "ppa_z"],
+    "biofizic/legacy/ppg": ["n_peaks", "ppa", "ppa_z", "sample_rate_hz", "ibi_recon_mean"],
+})
 
 ALL_TOPICS = list(FLOAT_FIELDS.keys()) + [
     "biofizic/acquisition/batch",
@@ -98,17 +121,32 @@ TOPIC_QOS: dict[str, int] = {
     "biofizic/state": 1,
 }
 
-MQTT_KEEPALIVE_SEC = 120
+# Short keepalive so a dropped/stale connection to the (remote) broker is
+# detected and auto-reconnected within ~1.5x this, not minutes. The logger does
+# ALL InfluxDB writes, so a slow reconnect = a multi-minute data gap.
+MQTT_KEEPALIVE_SEC = 20
 
 FLOAT_FIELDS.update({
     "biofizic/acquisition/batch": [
         "hr", "skin_temp", "ambient_temp",
         "acc_rms", "acc_p90", "acc_std", "gyro_rms", "gyro_p90", "gyro_std",
+        "acc_band_cardiac",
         # Atomic-sync diagnostics, plotted by biofizic-stream-sync dashboard.
         "ts_publish", "ts_anchor", "anchor_delay_ms", "skin_temp_age_ms",
-        "seq", "ibi_count", "ppg_count",
+        "seq", "ibi_count",
     ],
 })
+
+
+# Measurements that only get written when a research/legacy toggle is on. We
+# seed each with one zero row at startup so the FlightSQL table EXISTS — Grafana
+# then shows "No data" instead of a hard "table not found" error in those panels.
+SEED_MEASUREMENTS: dict[str, list[str]] = {
+    "biofizic_legacy_wesad": ["p_stress"],
+    "biofizic_legacy_valence": ["valence", "rmssd_z", "ppa_z"],
+    "biofizic_legacy_ppg": ["n_peaks", "ppa", "ppa_z", "sample_rate_hz", "ibi_recon_mean"],
+    "biofizic_all_data_live": ["ppg_green", "ppg_ir", "ibi_ms", "ppg_peak"],
+}
 
 
 def topic_to_measurement(topic: str) -> str:
@@ -120,7 +158,7 @@ def flatten_windows(payload: dict) -> dict:
     flat: dict = {
         "baseline_ready": payload.get("baseline_ready", False),
         "ibi_buffer_size": payload.get("ibi_buffer_size", 0),
-        "motion_class": payload.get("motion_class"),
+        "motion_state": payload.get("motion_state"),
     }
     for window_label, fields in payload.get("windows", {}).items():
         if not isinstance(fields, dict):
@@ -164,15 +202,15 @@ def flatten_acquisition(payload: dict) -> dict:
     if isinstance(ts_publish, (int, float)) and isinstance(skin_temp_ts, (int, float)) and skin_temp_ts > 0:
         flat["skin_temp_age_ms"] = int(ts_publish) - int(skin_temp_ts)
     motion = payload.get("motion") or {}
-    for key in ("acc_rms", "acc_p90", "acc_std", "gyro_rms", "gyro_p90", "gyro_std"):
+    for key in (
+        "acc_rms", "acc_p90", "acc_std", "gyro_rms", "gyro_p90", "gyro_std",
+        "acc_band_cardiac",
+    ):
         if key in motion:
             flat[key] = motion[key]
     ibi = payload.get("ibi") or {}
     if isinstance(ibi.get("ms"), list):
         flat["ibi_count"] = len(ibi["ms"])
-    ppg = payload.get("ppg") or {}
-    if isinstance(ppg.get("green"), list):
-        flat["ppg_count"] = len(ppg["green"])
     return flat
 
 
@@ -184,17 +222,26 @@ class MqttInfluxLogger:
         self.bucket    = influx_database
         self._msgs_ok  = 0
         self._msgs_err = 0
+        self._msgs_recv = 0            # MQTT messages received
+        self._last_msg_ts = time.time()
+        self._seeded   = False
+        # Decouple InfluxDB writes from the MQTT callback thread: on_message just
+        # enqueues (fast, non-blocking); a dedicated writer thread drains and
+        # writes in batches. Synchronous writes on the MQTT thread blocked it and
+        # collapsed throughput; the old ASYNCHRONOUS worker stalled silently.
+        self._wq: queue.Queue = queue.Queue(maxsize=20000)
+        self._dropped = 0
 
-        # InfluxDB 3 Core: token="ignored", org="ignored", bucket=database name
+        # InfluxDB 3 Core: token="ignored", org="ignored", bucket=database name.
+        # SYNCHRONOUS writes: the ASYNCHRONOUS worker stalled silently against
+        # InfluxDB 3 Core (and its success/error callbacks never fired), which
+        # froze all logging while MQTT stayed connected. Synchronous writes are
+        # inline + raise on error, so failures are visible and recoverable.
         self._influx = InfluxDBClient(
             url=influx_url, token="ignored", org="ignored"
         )
-        self.write_api = self._influx.write_api(
-            write_options=ASYNCHRONOUS,
-            success_callback=self._on_write_ok,
-            error_callback=self._on_write_err,
-        )
-        log.info(f"InfluxDB 3 Core: {influx_url}  database={influx_database} (async writes)")
+        self.write_api = self._influx.write_api(write_options=SYNCHRONOUS)
+        log.info(f"InfluxDB 3 Core: {influx_url}  database={influx_database} (sync writes)")
 
         import uuid
         self.client = mqtt.Client(
@@ -208,39 +255,175 @@ class MqttInfluxLogger:
         self.broker       = broker
         self.broker_port  = broker_port
 
-    def _on_write_ok(self, conf, data: str) -> None:
-        self._msgs_ok += 1
-        if self._msgs_ok % 50 == 0:
-            log.info(
-                "Wrote %d points to InfluxDB (%d errors)",
-                self._msgs_ok, self._msgs_err,
-            )
+    def _write(self, record) -> None:
+        """Enqueue a Point or list[Point] for the writer thread (non-blocking)."""
+        if not record:
+            return
+        try:
+            self._wq.put_nowait(record)
+        except queue.Full:
+            self._dropped += 1
 
-    def _on_write_err(self, conf, data: str, exception: Exception) -> None:
-        self._msgs_err += 1
-        log.warning("InfluxDB write error: %s", exception)
+    def _writer_loop(self) -> None:
+        """Drain the queue and write to InfluxDB in batches, off the MQTT thread.
+        Resilient: a failed write is logged and skipped, never kills the thread."""
+        while True:
+            try:
+                item = self._wq.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            batch: list = item if isinstance(item, list) else [item]
+            while len(batch) < 1000:
+                try:
+                    nxt = self._wq.get_nowait()
+                except queue.Empty:
+                    break
+                batch.extend(nxt if isinstance(nxt, list) else [nxt])
+            if not batch:
+                continue
+            try:
+                self.write_api.write(bucket=self.bucket, record=batch)
+                self._msgs_ok += len(batch)
+            except Exception as e:
+                self._msgs_err += 1
+                log.warning("InfluxDB write error (%d pts): %s", len(batch), e)
 
     def start(self) -> None:
         log.info(f"Conectare MQTT {self.broker}:{self.broker_port}")
         self.client.connect(self.broker, self.broker_port, keepalive=MQTT_KEEPALIVE_SEC)
+        threading.Thread(target=self._writer_loop, daemon=True).start()
+        threading.Thread(target=self._heartbeat, daemon=True).start()
         try:
             self.client.loop_forever()
         finally:
             self.write_api.close()
             self._influx.close()
 
+    def _heartbeat(self, period_s: int = 30) -> None:
+        """Every period_s, log message flow so a SILENT stall (connected but not
+        receiving, or InfluxDB writer stuck) is visible with a timestamp — these
+        do NOT trigger on_disconnect, so the heartbeat is how we catch them."""
+        last_recv = 0
+        last_ok = 0
+        while True:
+            time.sleep(period_s)
+            age = time.time() - self._last_msg_ts
+            d_recv = self._msgs_recv - last_recv
+            d_ok = self._msgs_ok - last_ok
+            last_recv, last_ok = self._msgs_recv, self._msgs_ok
+            if d_recv == 0:
+                log.warning(
+                    "HEARTBEAT STALL: 0 MQTT msgs in %ds (last %.0fs ago) — "
+                    "connected but not receiving (broker/subscription).", period_s, age,
+                )
+            elif d_ok == 0:
+                log.warning(
+                    "HEARTBEAT STALL: received %d msgs but 0 InfluxDB writes confirmed "
+                    "in %ds — write worker stuck. (recv=%d ok=%d err=%d)",
+                    d_recv, period_s, self._msgs_recv, self._msgs_ok, self._msgs_err,
+                )
+            else:
+                log.info(
+                    "HEARTBEAT ok: +%d msgs / +%d pts in %ds (recv=%d ok=%d err=%d "
+                    "queue=%d dropped=%d)",
+                    d_recv, d_ok, period_s, self._msgs_recv, self._msgs_ok,
+                    self._msgs_err, self._wq.qsize(), self._dropped,
+                )
+
     def _on_connect(self, client, userdata, flags, rc, props=None):
         if rc == 0:
             for t in ALL_TOPICS:
                 client.subscribe(t, qos=TOPIC_QOS.get(t, 0))
             log.info(f"MQTT conectat — subscris la {len(ALL_TOPICS)} topicuri")
+            self._seed_measurements()
         else:
             log.error(f"MQTT connect failed rc={rc}")
+
+    def _seed_measurements(self) -> None:
+        """Create the legacy/research tables (one zero row each) so Grafana shows
+        'No data' instead of a FlightSQL 'table not found' error until the
+        corresponding toggle is turned on."""
+        if self._seeded:
+            return
+        self._seeded = True
+        dt = datetime.now(timezone.utc)
+        for measurement, fields in SEED_MEASUREMENTS.items():
+            point = Point(measurement).time(dt)
+            for field in fields:
+                point.field(field, 0.0)
+            self._write(point)
+        log.info(f"Seeded {len(SEED_MEASUREMENTS)} legacy measurements (tables exist)")
 
     def _on_disconnect(self, client, userdata, flags, rc, props=None):
         log.warning(f"MQTT deconectat (rc={rc})")
 
+    @staticmethod
+    def _anchor_fn(sample_ts: list[float]):
+        """Return a function mapping a watch-clock sample ts -> a server-clock
+        datetime, anchoring the batch's newest sample to 'now' and preserving
+        intra-batch spacing. This makes the raw wave land at "now" regardless of
+        watch clock skew (which can be minutes off)."""
+        valid = [t for t in sample_ts if isinstance(t, (int, float)) and t > 0]
+        if not valid:
+            return None
+        newest = max(valid)
+        now_ms = datetime.now(timezone.utc).timestamp() * 1000.0
+
+        def to_dt(t: float):
+            return datetime.fromtimestamp((now_ms - (newest - t)) / 1000.0, tz=timezone.utc)
+
+        return to_dt
+
+    def _write_all_data_live(self, payload: dict) -> None:
+        """Unroll raw PPG samples and IBI beats to per-sample points, anchored to
+        server time (newest sample == now), preserving spacing."""
+        ppg = payload.get("ppg") or {}
+        green = ppg.get("green") or []
+        ir = ppg.get("ir") or []
+        ppg_ts = ppg.get("ts_ms") or []
+        ibi = payload.get("ibi") or {}
+        ibi_ms = ibi.get("ms") or []
+        ibi_ts = ibi.get("ts") or []
+
+        to_dt = self._anchor_fn(list(ppg_ts) + list(ibi_ts))
+        if to_dt is None:
+            return
+
+        points: list[Point] = []
+        for i, t in enumerate(ppg_ts):
+            if not isinstance(t, (int, float)) or t <= 0:
+                continue
+            p = Point("biofizic_all_data_live").time(to_dt(t))
+            wrote = False
+            if i < len(green):
+                p.field("ppg_green", float(green[i])); wrote = True
+            if i < len(ir):
+                p.field("ppg_ir", float(ir[i])); wrote = True
+            if wrote:
+                points.append(p)
+        for ms, t in zip(ibi_ms, ibi_ts):
+            if isinstance(t, (int, float)) and t > 0:
+                points.append(
+                    Point("biofizic_all_data_live").time(to_dt(t)).field("ibi_ms", float(ms))
+                )
+        self._write(points)  # one batched synchronous write
+
+    def _write_ppg_peaks(self, payload: dict) -> None:
+        """Mark detected PPG peaks on the ALL DATA LIVE wave (server-anchored)."""
+        peaks = payload.get("peak_ts") or []
+        to_dt = self._anchor_fn(list(peaks))
+        if to_dt is None:
+            return
+        points = [
+            Point("biofizic_all_data_live").time(to_dt(t)).field("ppg_peak", 1.0)
+            for t in peaks
+            if isinstance(t, (int, float)) and t > 0
+        ]
+        self._write(points)
+
     def _on_message(self, client, userdata, msg):
+        self._msgs_recv += 1
+        self._last_msg_ts = time.time()
         try:
             data = json.loads(msg.payload.decode("utf-8", errors="replace"))
         except Exception:
@@ -253,7 +436,13 @@ class MqttInfluxLogger:
         if topic == "biofizic/state/windows":
             data = flatten_windows(data)
         elif topic == "biofizic/acquisition/batch":
+            # ALL DATA LIVE: unroll the raw PPG samples and IBI beats to
+            # per-sample points before flattening to the summary point.
+            self._write_all_data_live(data)
             data = flatten_acquisition(data)
+        elif topic == "biofizic/legacy/ppg":
+            # Overlay the detected PPG peaks on the raw wave dashboard.
+            self._write_ppg_peaks(data)
 
         # Timestamp din payload daca exista, altfel now
         ts_ms = data.get("ts") or data.get("ts_publish") or data.get("ts_anchor")
@@ -299,11 +488,7 @@ class MqttInfluxLogger:
         if written == 0:
             return
 
-        try:
-            self.write_api.write(bucket=self.bucket, record=point)
-        except Exception as e:
-            self._msgs_err += 1
-            log.warning(f"InfluxDB enqueue error ({topic}): {e}")
+        self._write(point)
 
 
 def main():

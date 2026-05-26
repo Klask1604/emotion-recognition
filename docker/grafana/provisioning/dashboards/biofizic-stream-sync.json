@@ -194,7 +194,7 @@
     },
     {
       "id": 4,
-      "title": "Last PPG count",
+      "title": "Last cardiac-band energy",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -216,13 +216,13 @@
           "format": "table",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT ppg_count AS v FROM biofizic_acquisition_batch WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+          "rawSql": "SELECT acc_band_cardiac AS v FROM biofizic_acquisition_batch WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "decimals": 0,
+          "decimals": 4,
           "color": {
             "mode": "thresholds"
           },
@@ -370,7 +370,7 @@
     },
     {
       "id": 7,
-      "title": "PPG samples per batch (target ~25 per second)",
+      "title": "Cardiac-band motion energy per batch (0.5-4 Hz)",
       "type": "timeseries",
       "gridPos": {
         "h": 7,
@@ -392,7 +392,7 @@
           "format": "time_series",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT time, ppg_count FROM biofizic_acquisition_batch WHERE $__timeFilter(time) ORDER BY time",
+          "rawSql": "SELECT time, acc_band_cardiac FROM biofizic_acquisition_batch WHERE $__timeFilter(time) ORDER BY time",
           "refId": "A"
         }
       ],
@@ -409,7 +409,7 @@
             "spanNulls": true,
             "lineInterpolation": "smooth"
           },
-          "decimals": 0,
+          "decimals": 4,
           "min": 0
         },
         "overrides": []

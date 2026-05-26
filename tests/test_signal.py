@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from biofizic.signal import (
+from biofizic.dsp.ibi_filter import (
     filter_physiological_intervals,
     successive_interval_differences,
 )
-from biofizic.types import InterbeatIntervalEntry
+from biofizic.ingestion.messages import InterbeatIntervalEntry
 
 
 def _entries(values: list[int]) -> list[InterbeatIntervalEntry]:
@@ -45,3 +45,17 @@ def test_successive_differences_prefer_timestamp_coherent_pairs():
     ]
     diffs = successive_interval_differences(entries)
     assert diffs == [20.0, -10.0]
+
+
+def test_successive_differences_skip_pairs_across_a_gap():
+    # The middle pair straddles a dropped-beat gap: the timestamp jump (5000 ms)
+    # does not match the 810 ms IBI, so that difference must NOT be counted.
+    entries = [
+        InterbeatIntervalEntry(interval_ms=800, timestamp_ms=10_000),
+        InterbeatIntervalEntry(interval_ms=820, timestamp_ms=10_820),
+        InterbeatIntervalEntry(interval_ms=810, timestamp_ms=15_820),  # gap
+        InterbeatIntervalEntry(interval_ms=805, timestamp_ms=16_625),
+    ]
+    diffs = successive_interval_differences(entries)
+    # Only the two coherent pairs (820-800) and (805-810) survive.
+    assert diffs == [20.0, -5.0]

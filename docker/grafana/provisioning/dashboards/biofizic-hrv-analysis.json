@@ -254,7 +254,7 @@
     },
     {
       "id": 5,
-      "title": "RMSSD multi-window (15/30/60/90 s)",
+      "title": "RMSSD multi-window (30/60/90 s)",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -278,18 +278,6 @@
           "rawQuery": true,
           "rawSql": "SELECT time, rmssd_w30, rmssd_w60, rmssd_w90 FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "influxdb",
-            "uid": "biofizic-influx"
-          },
-          "editorMode": "code",
-          "format": "time_series",
-          "queryType": "sql",
-          "rawQuery": true,
-          "rawSql": "SELECT time, rmssd_w15 FROM biofizic_state WHERE $__timeFilter(time) AND rmssd_w15 > 0 ORDER BY time",
-          "refId": "B"
         }
       ],
       "fieldConfig": {
@@ -348,18 +336,6 @@
           "rawQuery": true,
           "rawSql": "SELECT time, stress_index_w30, stress_index_w60, stress_index_w90 FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "influxdb",
-            "uid": "biofizic-influx"
-          },
-          "editorMode": "code",
-          "format": "time_series",
-          "queryType": "sql",
-          "rawQuery": true,
-          "rawSql": "SELECT time, stress_index_w15 FROM biofizic_state WHERE $__timeFilter(time) AND stress_index_w15 > 0 ORDER BY time",
-          "refId": "B"
         }
       ],
       "fieldConfig": {

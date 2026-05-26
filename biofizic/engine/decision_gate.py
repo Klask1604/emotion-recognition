@@ -1,38 +1,34 @@
-"""Single decision gate: Kubios physiology + HAR caps + alert confirmation."""
+"""Decision gate: arousal from the Kalman-filtered personal z + CUSUM alert.
+
+The signal-quality gate no longer holds a value by hand: the upstream Kalman
+smoother (engine/state_estimator.py) is fed a measurement variance that grows
+when quality is poor, so low-quality epochs barely move the estimate. This gate
+just maps the filtered z to a displayed arousal and runs the CUSUM change
+detector:
+  - personal arousal = Phi(z_filtered) once the baseline is locked, falling back
+    to the population Kubios zone before that,
+  - a one-sided CUSUM change detector on z_filtered for sustained-stress alerts.
+"""
 
 from __future__ import annotations
 
-from collections import deque
 from dataclasses import dataclass, field
 
-import numpy as np
-
-from biofizic.config import (
-    ALERT_CONFIRMATION_EPOCH_COUNT,
-    ALERT_PENDING_CAP,
-    HAR_AROUSAL_CAP_BY_CLASS,
-    REST_ACCELERATION_P90_MAX,
-    RMSSD_SPIKE_RATIO_THRESHOLD,
-    RMSSD_Z_SUPPRESS_ALERT,
-    STRESS_INDEX_Z_ALERT,
-    STRESS_INDEX_Z_ALERT_STRONG,
-)
-from biofizic.decision.arousal_mapper import (
+from biofizic.engine.arousal_mapper import (
     arousal_scale_10_to_label,
     kubios_zone_for_stress_index,
-    stress_index_to_arousal,
-    zone_is_alert_or_higher,
-    zone_is_elevated_or_higher,
+    personal_arousal_10,
+    population_arousal_10,
 )
-from biofizic.motion.motion_ml import MotionPrediction
+from biofizic.engine.cusum import CusumDetector
+from biofizic.engine.signal_quality import SignalQuality
 
 
 @dataclass
 class DecisionGateState:
-    """Mutable state across epochs — one elevated_streak counter."""
+    """Mutable state across epochs."""
 
-    elevated_streak: int = 0
-    recent_rmssd: deque[float] = field(default_factory=lambda: deque(maxlen=4))
+    cusum: CusumDetector = field(default_factory=CusumDetector)
 
 
 @dataclass(frozen=True)
@@ -40,122 +36,51 @@ class DecisionGateResult:
     display_arousal_10: int
     display_label: str
     kubios_label: str
+    confidence: float
+    alert: bool
     decision_reason: str
     gate_mode: str
-
-
-def _is_rest(motion_class: str, acc_p90: float) -> bool:
-    """Rest-like when HAR says STILL and wrist acceleration is low."""
-    return motion_class == "STILL" and acc_p90 <= REST_ACCELERATION_P90_MAX
-
-
-def _dual_ok(stress_index_z: float, rmssd_z: float) -> bool:
-    return (
-        stress_index_z >= STRESS_INDEX_Z_ALERT
-        and rmssd_z >= RMSSD_Z_SUPPRESS_ALERT
-    ) or stress_index_z >= STRESS_INDEX_Z_ALERT_STRONG
 
 
 def apply_decision_gate(
     *,
     kubios_stress_index: float,
-    rmssd_ms: float,
-    stress_index_z: float,
-    rmssd_z: float,
-    motion: MotionPrediction,
-    acc_p90: float,
+    stress_index_z_filtered: float,
+    quality: SignalQuality,
+    baseline_ready: bool,
     gate_state: DecisionGateState,
+    arousal_offset_z: float = 0.0,
 ) -> DecisionGateResult:
-    """
-    Fuse Kubios stress index with HAR motion caps and confirm alerts.
+    kubios_label = kubios_zone_for_stress_index(kubios_stress_index).label
 
-    Order: physio scale -> HAR cap -> RMSSD spike filter -> rest dual-veto
-    -> elevated streak -> alert confirmation (ALERT_CONFIRMATION_EPOCH_COUNT).
-    """
-    if kubios_stress_index <= 0:
-        gate_state.elevated_streak = 0
-        return DecisionGateResult(
-            display_arousal_10=5,
-            display_label="Echilibrat",
-            kubios_label="Echilibrat",
-            decision_reason="no_stress_index",
-            gate_mode="kubios_zone",
-        )
-
-    zone = kubios_zone_for_stress_index(kubios_stress_index)
-    _, physio_scale_10, _ = stress_index_to_arousal(kubios_stress_index)
-    kubios_label = zone.label
-    cap = HAR_AROUSAL_CAP_BY_CLASS.get(motion.motion_class, ALERT_PENDING_CAP)
-    display_a10 = min(int(physio_scale_10), cap)
+    if baseline_ready:
+        arousal_10 = personal_arousal_10(stress_index_z_filtered, arousal_offset_z)
+        gate_mode = "personal_z"
+    else:
+        arousal_10 = population_arousal_10(kubios_stress_index)
+        gate_mode = "population_zone"
+    display_label = arousal_scale_10_to_label(arousal_10)
 
     reasons = [
-        f"physio={kubios_label}",
-        f"har={motion.motion_class}",
-        f"har_conf={motion.confidence:.2f}",
+        f"kubios={kubios_label}",
+        f"motion={quality.motion_state}",
+        f"q={quality.quality:.2f}",
+        f"artifact={quality.artifact_rate:.2f}",
     ]
-    if display_a10 < int(physio_scale_10):
-        reasons.append(f"cap_{cap}")
 
-    gate_state.recent_rmssd.append(rmssd_ms)
-
-    if (
-        len(gate_state.recent_rmssd) >= 2
-        and _is_rest(motion.motion_class, acc_p90)
-        and rmssd_ms > 0
-    ):
-        previous = list(gate_state.recent_rmssd)[:-1]
-        median = float(np.median(previous)) if previous else rmssd_ms
-        if median > 0 and abs(rmssd_ms - median) / median > RMSSD_SPIKE_RATIO_THRESHOLD:
-            gate_state.elevated_streak = 0
-            capped = min(display_a10, ALERT_PENDING_CAP)
-            return DecisionGateResult(
-                display_arousal_10=capped,
-                display_label=arousal_scale_10_to_label(capped),
-                kubios_label=kubios_label,
-                decision_reason="|".join(reasons + ["rmssd_spike_cap"]),
-                gate_mode="rmssd_spike_cap",
-            )
-
-    if not zone_is_elevated_or_higher(zone):
-        gate_state.elevated_streak = 0
-        return DecisionGateResult(
-            display_arousal_10=display_a10,
-            display_label=arousal_scale_10_to_label(display_a10),
-            kubios_label=kubios_label,
-            decision_reason="|".join(reasons),
-            gate_mode="kubios_zone",
-        )
-
-    if _is_rest(motion.motion_class, acc_p90) and not _dual_ok(stress_index_z, rmssd_z):
-        gate_state.elevated_streak = 0
-        capped = min(display_a10, ALERT_PENDING_CAP)
-        return DecisionGateResult(
-            display_arousal_10=capped,
-            display_label=arousal_scale_10_to_label(capped),
-            kubios_label=kubios_label,
-            decision_reason="|".join(reasons + ["rest_dual_veto"]),
-            gate_mode="rest_dual_veto",
-        )
-
-    gate_state.elevated_streak += 1
-    gate_mode = "kubios_zone"
-
-    if zone_is_alert_or_higher(zone):
-        if gate_state.elevated_streak < ALERT_CONFIRMATION_EPOCH_COUNT:
-            capped = min(display_a10, ALERT_PENDING_CAP)
-            return DecisionGateResult(
-                display_arousal_10=capped,
-                display_label=arousal_scale_10_to_label(capped),
-                kubios_label=kubios_label,
-                decision_reason="|".join(reasons + ["alert_pending"]),
-                gate_mode="alert_pending",
-            )
+    # CUSUM on the filtered z (meaningful only once the baseline is locked). The
+    # filtered z is already quality-attenuated, so artifact bursts cannot push it.
+    alert = gate_state.cusum.update(stress_index_z_filtered) if baseline_ready else False
+    if alert:
         gate_mode = "alert_confirmed"
+        reasons.append("alert")
 
     return DecisionGateResult(
-        display_arousal_10=display_a10,
-        display_label=arousal_scale_10_to_label(display_a10),
+        display_arousal_10=arousal_10,
+        display_label=display_label,
         kubios_label=kubios_label,
+        confidence=quality.quality,
+        alert=alert,
         decision_reason="|".join(reasons),
         gate_mode=gate_mode,
     )

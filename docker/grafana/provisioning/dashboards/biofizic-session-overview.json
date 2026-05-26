@@ -139,7 +139,7 @@
     },
     {
       "id": 3,
-      "title": "Motion class",
+      "title": "Motion state",
       "type": "state-timeline",
       "gridPos": {
         "h": 4,
@@ -161,7 +161,7 @@
           "format": "table",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT time, motion_class FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
+          "rawSql": "SELECT time, motion_state FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
           "refId": "A"
         }
       ],

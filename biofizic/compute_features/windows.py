@@ -5,13 +5,9 @@ from __future__ import annotations
 from collections import deque
 
 from biofizic.config import ANALYSIS_WINDOW_SECONDS, IBI_BUFFER_RETENTION_MS
-from biofizic.features.hrv_metrics import compute_hrv_from_entries
-from biofizic.types import (
-    HrvMetrics,
-    IbiBatchMessage,
-    InterbeatIntervalEntry,
-    MultiWindowHrvResult,
-)
+from biofizic.compute_features.hrv_metrics import compute_hrv_from_entries
+from biofizic.compute_features.results import HrvMetrics, MultiWindowHrvResult
+from biofizic.ingestion.messages import IbiBatchMessage, InterbeatIntervalEntry
 
 
 class MultiWindowProcessor:
@@ -59,19 +55,30 @@ class RollingIbiBuffer:
         self._entries: deque[InterbeatIntervalEntry] = deque()
 
     def ingest_batch(self, batch: IbiBatchMessage) -> None:
-        for ms, ts in zip(batch.intervals_ms, batch.timestamps_ms or []):
-            if ms > 0:
-                self._entries.append(
-                    InterbeatIntervalEntry(interval_ms=int(ms), timestamp_ms=int(ts))
-                )
-        if not batch.timestamps_ms:
-            for ms in batch.intervals_ms:
+        timestamps = batch.timestamps_ms or []
+        if len(timestamps) == len(batch.intervals_ms):
+            # Full per-beat timestamps from the watch: pair directly, dropping
+            # only non-positive intervals.
+            for ms, ts in zip(batch.intervals_ms, timestamps):
                 if ms > 0:
                     self._entries.append(
-                        InterbeatIntervalEntry(
-                            interval_ms=int(ms), timestamp_ms=batch.timestamp_ms
-                        )
+                        InterbeatIntervalEntry(interval_ms=int(ms), timestamp_ms=int(ts))
                     )
+        else:
+            # Missing or partial timestamps (older zip() truncated and silently
+            # dropped the tail beats). Reconstruct per-beat timestamps walking
+            # backward from the batch anchor using the interval values, the same
+            # way the watch does in buildIbiTimestamps. Never drop beats here.
+            intervals = [int(ms) for ms in batch.intervals_ms if ms > 0]
+            end_ts = int(batch.timestamp_ms)
+            reconstructed = [0] * len(intervals)
+            for i in range(len(intervals) - 1, -1, -1):
+                reconstructed[i] = end_ts
+                end_ts -= intervals[i]
+            for ms, ts in zip(intervals, reconstructed):
+                self._entries.append(
+                    InterbeatIntervalEntry(interval_ms=ms, timestamp_ms=ts)
+                )
         self._trim(batch.timestamp_ms)
 
     def _trim(self, now_ms: int) -> None:
@@ -97,3 +104,29 @@ class RollingIbiBuffer:
             for e in self._entries
             if e.timestamp_ms is None or e.timestamp_ms >= cutoff
         ]
+
+
+class RollingSensorBuffer:
+    """Timestamped scalar samples (e.g. cardiac-band motion energy) with the
+    same time-based retention as RollingIbiBuffer. The server only kept the
+    latest SensorBatchMessage, so a windowed motion statistic had no history to
+    draw on; this buffer provides the per-window median."""
+
+    def __init__(self, retention_ms: int = IBI_BUFFER_RETENTION_MS) -> None:
+        self._retention_ms = retention_ms
+        self._samples: deque[tuple[int, float]] = deque()
+
+    def ingest(self, timestamp_ms: int, value: float) -> None:
+        self._samples.append((int(timestamp_ms), float(value)))
+        cutoff = int(timestamp_ms) - self._retention_ms
+        while self._samples and self._samples[0][0] < cutoff:
+            self._samples.popleft()
+
+    def median_in_last_ms(self, span_ms: int, *, end_ms: int) -> float | None:
+        if not self._samples or end_ms <= 0:
+            return None
+        cutoff = end_ms - span_ms
+        values = sorted(v for ts, v in self._samples if ts >= cutoff)
+        if not values:
+            return None
+        return values[len(values) // 2]

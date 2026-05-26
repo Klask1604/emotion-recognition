@@ -74,6 +74,8 @@ services:
       - "${MQTT_PORT:-1883}"
     volumes:
       - ./data:/data
+      # Use the host-trained model live; retrain + restart, no rebuild needed.
+      - ./models:/app/models
 
   mqtt-logger:
     <<: *python-service

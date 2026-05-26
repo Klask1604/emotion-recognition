@@ -6,11 +6,11 @@ import math
 
 import numpy as np
 
-from biofizic.features.hrv_metrics import (
+from biofizic.compute_features.hrv_metrics import (
     compute_baevsky_indices,
     compute_hrv_from_entries,
 )
-from biofizic.types import InterbeatIntervalEntry
+from biofizic.ingestion.messages import InterbeatIntervalEntry
 
 
 def test_compute_hrv_returns_none_for_empty_input():

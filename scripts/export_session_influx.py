@@ -52,9 +52,10 @@ def main() -> None:
       baseline_si,
       z_si,
       mean_hr,
-      motion_class,
-      activity_mode,
-      confidence,
+      motion_state,
+      signal_quality,
+      artifact_rate,
+      alert,
       labels_agree
     FROM biofizic_state
     WHERE time >= '{args.from_utc}' AND time <= '{args.to_utc}'
@@ -75,9 +76,10 @@ def main() -> None:
         "baseline_si",
         "z_si",
         "mean_hr",
-        "motion_class",
-        "activity_mode",
-        "confidence",
+        "motion_state",
+        "signal_quality",
+        "artifact_rate",
+        "alert",
         "labels_agree",
     ]
 

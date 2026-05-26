@@ -57,8 +57,11 @@ def make_payload(arousal_10: int, **kw: Any) -> dict[str, Any]:
         "z_si": float(kw.get("z_si", 0.0)),
         "profile_ready": True,
         "baseline_ready": True,
-        "motion_class": "STILL",
-        "activity_mode": "REST",
+        "motion_state": kw.get("motion_state", "still"),
+        "signal_quality": round(conf, 3),
+        "artifact_rate": float(kw.get("artifact_rate", 0.0)),
+        "motion_energy": float(kw.get("motion_energy", 0.0)),
+        "alert": bool(kw.get("alert", False)),
     }
 
 

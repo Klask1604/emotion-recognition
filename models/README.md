@@ -1,16 +1,11 @@
-# ML models (local only)
+# Models
 
-`.joblib` files are not committed. Train locally:
+No trained model artifacts are needed. The pipeline is fully analytic: HRV
+math, a robust per-user log-space baseline, an online signal-quality model
+(`biofizic/decision/signal_quality.py`), and a CUSUM detector.
 
-```bash
-python train/train_wisdm_har.py    # -> motion_har_wisdm.joblib
-python wesad/train_wesad_epoch.py  # -> emotion WESAD (optional, gate failed)
-```
-
-Required for production HAR:
-
-- `motion_har_wisdm.joblib`
-
-Optional population stats (gitignored if regenerated):
-
-- `population_stats.json`
+The earlier WISDM Random Forest HAR classifier was retired because its
+train/serve feature spaces did not match the Galaxy Watch 7's 1 Hz aggregated
+motion statistics (see `docs/THESIS_LIMITATIONS.md`). `scikit-learn` and
+`joblib` are no longer dependencies, and this directory no longer ships any
+`.joblib` files.

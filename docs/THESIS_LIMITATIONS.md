@@ -10,19 +10,28 @@ limitations.
 - IBI filter 300 to 2000 ms with median outlier rejection at 20 percent
 - RMSSD as a parasympathetic marker
 - Baevsky Stress Index, then Kubios SI = sqrt(SI), with zones 7.1 / 12.2 / 22.4 / 30.0 from the Kubios HRV User Guide
-- Personal baseline z-score, because RMSSD varies a lot between subjects
+- Personal baseline as a robust log-space z-score: RMSSD and SI are log-normal
+  (Task Force ESC/NASPE 1996; Nunan 2010), estimated with median + MAD
+  (sigma = 1.4826*MAD, Hampel). Arousal = Phi(z) via the normal CDF.
+- Signal-quality gate instead of activity classification: IBI artifact rate is a
+  standard HRV quality index (Task Force 1996), and cardiac-band (0.5-4 Hz)
+  acceleration energy is the motion that overlaps and corrupts the PPG pulse
+  (accelerometer motion-artifact removal, TROIKA, Zhang 2015).
+- CUSUM sequential change detection for sustained-stress alerts (Page 1954;
+  Montgomery SPC), with z already in sigma units so k and h take SPC defaults.
 - Fixed decision window w30; w60 and w90 are kept only for validation (see below)
 
 ## Empirical parameters (tuned on Galaxy Watch 7, not from literature)
 
 | Parameter | Value | Role |
 |-----------|-------|------|
-| `BASELINE_EMA_ALPHA` | 0.05 | Speed of the rest-baseline EMA |
-| `ALERT_CONFIRMATION_EPOCH_COUNT` | 2 | Consecutive elevated epochs before a full alert |
-| `ALERT_PENDING_CAP` | 6 | Cap on the displayed arousal_10 while an alert is being confirmed |
+| `BASELINE_MIN_REST_EPOCHS` | 12 | Resting epochs (~6 min) before the baseline locks; fewer is too noisy for a stable MAD |
+| `BASELINE_ROBUST_WINDOW_EPOCHS` | 60 | Rolling window the median/MAD slides over (adapts to circadian drift without an EMA) |
+| `BASELINE_LOG_SIGMA_FLOOR` | 0.05 | Numerical floor on the log-space sigma (INFRA) |
+| `ARTIFACT_RATE_MAX` | 0.05 | Reliability cutoff on IBI artifact rate, aligned with the Kubios "low" correction regime |
+| `QUALITY_LOGISTIC_LEARNING_RATE` | 0.05 | SGD step for the per-user P(artifact \| motion) logistic fit (INFRA) |
+| `CUSUM_SLACK_K` / `CUSUM_THRESHOLD_H` | 0.5 / 4.0 | SPC defaults; z is already in sigma units |
 | `LIVE_AROUSAL_HYSTERESIS_TICKS` | 3 | Consecutive live ticks required before the watch UI adopts a new integer. Two ticks of agreement turned out to still let pure 2-tick alternations through. |
-| `REST_ACCELERATION_P90_MAX` | 0.5 m/s^2 | Rest gate together with HAR STILL |
-| HAR gating set | STILL / SCROLL / HAND / WALK | Heuristic; wrist motion contaminates PPG |
 
 All other constants live in `biofizic/config.py` with a one-line provenance
 comment (LITERATURE / EMPIRICAL / INFRA) next to each section.
@@ -32,10 +41,30 @@ comment (LITERATURE / EMPIRICAL / INFRA) next to each section.
 - Kubios zones are calibrated on clinical ECG and Polar H10 chest straps. The Galaxy Watch 7 uses an optical wrist PPG, so there is a measurable domain shift.
 - The Samsung Health SDK batches PPG samples when the watch screen is off. The cadence is irregular (8 to 15 s gaps) and the timestamps inside a batch are only approximately uniform, which collapses any narrow-band frequency analysis. The thesis pipeline does not consume raw PPG anymore for that reason.
 
-## Motion: single source for decisions
+## Motion: signal quality, not activity classification
 
-- HAR (`motion_ml`) is the only source used for arousal caps, baseline lock and alerts.
-- The `activity_mode` field published on MQTT is now an alias for `motion_class`. An earlier version of the pipeline ran a second motion classifier (`context_engine`) in parallel with HAR, plus a separate `AdaptiveMotionBaseline` based on a 1-component Gaussian Mixture. Both were removed once it became clear they used different taxonomies (REST / SEDENTARY / ARM_ACTIVE / LOCOMOTION versus STILL / SCROLL / HAND / WALK) and were not driving any decision. Fitting a single-component GMM is mathematically equivalent to taking the mean and standard deviation, so depending on `scikit-learn` for it was overkill.
+The pipeline no longer classifies activities at all. The WISDM Random Forest
+HAR classifier was retired for a concrete, demonstrable reason: a train/serve
+feature mismatch. It was trained on 20 Hz WISDM windows whose last two features
+were FFT band energies, but at inference on the Galaxy Watch 7 it received the
+watch's 1 Hz aggregated motion statistics, with those same two columns filled by
+crude linear rescalings of acceleration — and a per-user normaliser was applied
+at inference although the model had been fit on raw features. The two feature
+spaces did not match, so the classifier's output on-device was not trustworthy.
+
+The only role HAR ever played was to cap arousal when wrist motion corrupts the
+PPG. That physical cause is now measured directly by the signal-quality gate
+(`decision/signal_quality.py`): the IBI artifact rate plus the cardiac-band
+(0.5-4 Hz) acceleration energy reported by the watch, with the motion->artifact
+relationship learned per subject by online logistic regression. A coarse
+still/moving label is derived from the learned threshold for the UI only; it is
+not an input to any decision.
+
+(Earlier versions also ran a `context_engine` and an `AdaptiveMotionBaseline`
+1-component GMM in parallel; both were removed previously as redundant — a
+single-component GMM is just a mean and standard deviation, so depending on
+`scikit-learn` for it was overkill. `scikit-learn` and `joblib` are no longer
+dependencies.)
 
 ## What was tried and rejected (thesis "Limitations" chapter)
 

@@ -213,12 +213,9 @@ def build_hrv_dashboard() -> dict:
         ),
         ts_panel(
             5,
-            "RMSSD multi-window (15/30/60/90 s)",
+            "RMSSD multi-window (30/60/90 s)",
             4,
             "SELECT time, rmssd_w30, rmssd_w60, rmssd_w90 FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
-            extra_sql=[
-                "SELECT time, rmssd_w15 FROM biofizic_state WHERE $__timeFilter(time) AND rmssd_w15 > 0 ORDER BY time",
-            ],
             unit="ms",
         ),
         ts_panel(
@@ -226,9 +223,6 @@ def build_hrv_dashboard() -> dict:
             "Stress index multi-window",
             12,
             "SELECT time, stress_index_w30, stress_index_w60, stress_index_w90 FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
-            extra_sql=[
-                "SELECT time, stress_index_w15 FROM biofizic_state WHERE $__timeFilter(time) AND stress_index_w15 > 0 ORDER BY time",
-            ],
             decimals=2,
         ),
         ts_panel(
@@ -297,12 +291,12 @@ def build_baseline_dashboard() -> dict:
     )
 
 
-def build_motion_dashboard() -> dict:
+def build_signal_quality_dashboard() -> dict:
     panels = [
         stat_panel(
             1,
-            "HAR class",
-            "SELECT motion_class AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            "Motion state",
+            "SELECT motion_state AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             0,
             0,
             w=6,
@@ -310,48 +304,59 @@ def build_motion_dashboard() -> dict:
         ),
         stat_panel(
             2,
-            "Activity mode",
-            "SELECT activity_mode AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            "Signal quality (Q)",
+            "SELECT signal_quality AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             6,
-            0,
-            w=6,
-            decimals=0,
-        ),
-        stat_panel(
-            3,
-            "Motion confidence",
-            "SELECT motion_conf AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
-            12,
             0,
             w=6,
             decimals=2,
         ),
+        stat_panel(
+            3,
+            "IBI artifact rate",
+            "SELECT artifact_rate AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            12,
+            0,
+            w=6,
+            decimals=3,
+        ),
         timeline_panel(
             4,
-            "HAR class over time",
-            "SELECT time, motion_class FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
+            "Motion state over time",
+            "SELECT time, motion_state FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
             4,
             h=5,
         ),
         ts_panel(
             5,
-            "Motion confidence",
+            "Signal quality vs artifact rate",
             9,
-            "SELECT time, motion_conf FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
+            "SELECT time, signal_quality FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
+            extra_sql=[
+                "SELECT time, artifact_rate FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
+            ],
             h=7,
             min_v=0,
             max_v=1,
-            decimals=2,
+            decimals=3,
         ),
         ts_panel(
             6,
-            "Acceleration stats (1 Hz batch)",
+            "Cardiac-band motion energy vs acceleration (1 Hz batch)",
             16,
-            "SELECT time, acc_rms, acc_p90, gyro_rms FROM biofizic_acquisition_batch WHERE $__timeFilter(time) ORDER BY time",
-            unit="accMS2",
+            "SELECT time, acc_band_cardiac FROM biofizic_acquisition_batch WHERE $__timeFilter(time) ORDER BY time",
+            extra_sql=[
+                "SELECT time, acc_rms FROM biofizic_acquisition_batch WHERE $__timeFilter(time) ORDER BY time",
+            ],
         ),
     ]
-    return dashboard_meta("biofizic-motion-har", "Biofizic Motion HAR", ["biofizic", "motion"], panels, version=4)
+    return dashboard_meta(
+        "biofizic-signal-quality",
+        "Biofizic Signal Quality",
+        ["biofizic", "quality"],
+        panels,
+        version=1,
+    )
 
 
 def build_overview_dashboard() -> dict:
@@ -500,12 +505,13 @@ def build_stream_sync_dashboard() -> dict:
     """
     Diagnostic dashboard for the acquisition/batch v2 atomic sync.
 
-    The thesis claims IBI, PPG and motion are bundled with a shared ts_anchor
-    so the server can run HRV math on data from the same time window. These
-    panels make that visible: anchor_delay_ms should stay positive (or zero
-    when no fresher stream is available), seq should increment by 1 every
-    second, and the per-batch ibi_count / ppg_count traces show the bursty
-    nature of the HR stream that motivated the design in the first place.
+    The thesis claims IBI and motion are bundled with a shared ts_anchor so the
+    server can run HRV math on data from the same time window. These panels make
+    that visible: anchor_delay_ms should stay positive (or zero when no fresher
+    stream is available), seq should increment by 1 every second, the per-batch
+    ibi_count trace shows the bursty nature of the HR stream that motivated the
+    design, and acc_band_cardiac is the cardiac-band motion energy that feeds
+    the signal-quality gate.
     """
     panels = [
         stat_panel(
@@ -531,10 +537,10 @@ def build_stream_sync_dashboard() -> dict:
         ),
         stat_panel(
             4,
-            "Last PPG count",
-            "SELECT ppg_count AS v FROM biofizic_acquisition_batch "
+            "Last cardiac-band energy",
+            "SELECT acc_band_cardiac AS v FROM biofizic_acquisition_batch "
             "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
-            18, 0, w=6, decimals=0,
+            18, 0, w=6, decimals=4,
         ),
         ts_panel(
             5,
@@ -558,13 +564,13 @@ def build_stream_sync_dashboard() -> dict:
         ),
         ts_panel(
             7,
-            "PPG samples per batch (target ~25 per second)",
+            "Cardiac-band motion energy per batch (0.5-4 Hz)",
             18,
-            "SELECT time, ppg_count FROM biofizic_acquisition_batch "
+            "SELECT time, acc_band_cardiac FROM biofizic_acquisition_batch "
             "WHERE $__timeFilter(time) ORDER BY time",
             h=7,
             min_v=0,
-            decimals=0,
+            decimals=4,
         ),
         ts_panel(
             8,
@@ -618,8 +624,8 @@ def build_session_overview_dashboard() -> dict:
         ),
         timeline_panel(
             3,
-            "Motion class",
-            "SELECT time, motion_class FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
+            "Motion state",
+            "SELECT time, motion_state FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
             14,
             h=4,
         ),
@@ -657,16 +663,247 @@ def build_session_overview_dashboard() -> dict:
     )
 
 
+def build_all_data_live_dashboard() -> dict:
+    """High-frequency raw view: the PPG pulse wave with detected peaks, plus the
+    IBI the watch reports vs the IBI reconstructed from those peaks."""
+    panels = [
+        ts_panel(
+            1,
+            "Raw PPG (green) with detected peaks",
+            0,
+            "SELECT time, ppg_green FROM biofizic_all_data_live "
+            "WHERE $__timeFilter(time) AND ppg_green IS NOT NULL ORDER BY time",
+            extra_sql=[
+                "SELECT time, ppg_peak FROM biofizic_all_data_live "
+                "WHERE $__timeFilter(time) AND ppg_peak IS NOT NULL ORDER BY time",
+            ],
+            h=9,
+        ),
+        ts_panel(
+            2,
+            "IBI: watch (SDK) vs reconstructed from PPG peaks [ms]",
+            9,
+            "SELECT time, ibi_ms FROM biofizic_all_data_live "
+            "WHERE $__timeFilter(time) AND ibi_ms IS NOT NULL ORDER BY time",
+            extra_sql=[
+                "SELECT time, ibi_recon_mean FROM biofizic_legacy_ppg "
+                "WHERE $__timeFilter(time) AND ibi_recon_mean > 0 ORDER BY time",
+            ],
+            unit="ms",
+        ),
+        stat_panel(
+            3,
+            "PPG sample rate (Hz)",
+            "SELECT sample_rate_hz AS v FROM biofizic_legacy_ppg "
+            "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            0, 17, w=12,
+        ),
+        stat_panel(
+            4,
+            "Peaks per window",
+            "SELECT n_peaks AS v FROM biofizic_legacy_ppg "
+            "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
+            12, 17, w=12, decimals=0,
+        ),
+    ]
+    return dashboard_meta(
+        "biofizic-all-data-live", "Biofizic ALL DATA LIVE", ["biofizic", "raw"], panels, refresh="1s"
+    )
+
+
+def build_determinist_vs_wesad_dashboard() -> dict:
+    """Deterministic personal-baseline stress vs a WESAD-trained ML probability
+    (a foreign-dataset model; expected to be noisier / more false-positive)."""
+    panels = [
+        ts_panel(
+            1,
+            "Filtered personal z (deterministic) vs WESAD P(stress)",
+            0,
+            "SELECT time, z_si_filtered FROM biofizic_state "
+            "WHERE $__timeFilter(time) ORDER BY time",
+            extra_sql=[
+                "SELECT time, p_stress FROM biofizic_legacy_wesad "
+                "WHERE $__timeFilter(time) ORDER BY time",
+            ],
+            decimals=2,
+        ),
+        ts_panel(
+            2,
+            "Production arousal (1-10) vs WESAD P(stress) x10",
+            8,
+            "SELECT time, arousal_10 FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
+            extra_sql=[
+                "SELECT time, p_stress * 10 AS wesad_x10 FROM biofizic_legacy_wesad "
+                "WHERE $__timeFilter(time) ORDER BY time",
+            ],
+            min_v=0, max_v=10, decimals=0,
+        ),
+    ]
+    return dashboard_meta(
+        "biofizic-determinist-vs-wesad",
+        "Biofizic Determinist vs WESAD",
+        ["biofizic", "legacy"],
+        panels,
+    )
+
+
+def build_ppg_failure_dashboard() -> dict:
+    """PPG pulse amplitude collapses under wrist motion — the evidence for not
+    estimating valence from wrist PPG."""
+    panels = [
+        ts_panel(
+            1,
+            "Pulse amplitude (PPA) vs wrist acceleration",
+            0,
+            "SELECT time, ppa FROM biofizic_legacy_ppg "
+            "WHERE $__timeFilter(time) AND ppa > 0 ORDER BY time",
+            extra_sql=[
+                "SELECT time, acc_rms FROM biofizic_acquisition_batch "
+                "WHERE $__timeFilter(time) ORDER BY time",
+            ],
+            decimals=2,
+        ),
+        ts_panel(
+            2,
+            "PPA z-score vs cardiac-band motion energy",
+            8,
+            "SELECT time, ppa_z FROM biofizic_legacy_ppg WHERE $__timeFilter(time) ORDER BY time",
+            extra_sql=[
+                "SELECT time, acc_band_cardiac FROM biofizic_acquisition_batch "
+                "WHERE $__timeFilter(time) ORDER BY time",
+            ],
+            decimals=2,
+        ),
+    ]
+    return dashboard_meta(
+        "biofizic-ppg-failure", "Biofizic PPG Failure in the Wild", ["biofizic", "legacy"], panels
+    )
+
+
+def build_valence_demo_dashboard() -> dict:
+    """Ad-hoc valence heuristic (documented negative result): noisy and not
+    separable from arousal; never used in production."""
+    panels = [
+        ts_panel(
+            1,
+            "Valence heuristic [-1,1] (legacy, NOT production)",
+            0,
+            "SELECT time, valence FROM biofizic_legacy_valence WHERE $__timeFilter(time) ORDER BY time",
+            min_v=-1, max_v=1, decimals=2,
+        ),
+        ts_panel(
+            2,
+            "Valence inputs: RMSSD z vs PPA z",
+            8,
+            "SELECT time, rmssd_z FROM biofizic_legacy_valence WHERE $__timeFilter(time) ORDER BY time",
+            extra_sql=[
+                "SELECT time, ppa_z FROM biofizic_legacy_valence WHERE $__timeFilter(time) ORDER BY time",
+            ],
+            decimals=2,
+        ),
+    ]
+    return dashboard_meta(
+        "biofizic-valence-demo", "Biofizic Valence Demo (negative result)", ["biofizic", "legacy"], panels
+    )
+
+
+def build_live_sync_dashboard() -> dict:
+    """Validate that HR / RMSSD / motion are time-aligned: everything here comes
+    from biofizic_live, all stamped with the watch ts_anchor (one clock)."""
+    panels = [
+        ts_panel(
+            1,
+            "Heart rate: SDK (instant) vs window mean_hr",
+            0,
+            "SELECT time, hr_sdk FROM biofizic_live WHERE $__timeFilter(time) AND hr_sdk > 0 ORDER BY time",
+            extra_sql=[
+                "SELECT time, mean_hr FROM biofizic_live WHERE $__timeFilter(time) AND mean_hr > 0 ORDER BY time",
+            ],
+            unit="none",
+        ),
+        ts_panel(
+            2,
+            "HR (SDK) vs RMSSD — should move together (inverse) if aligned",
+            8,
+            "SELECT time, hr_sdk FROM biofizic_live WHERE $__timeFilter(time) AND hr_sdk > 0 ORDER BY time",
+            extra_sql=[
+                "SELECT time, rmssd FROM biofizic_live WHERE $__timeFilter(time) AND rmssd > 0 ORDER BY time",
+            ],
+        ),
+        ts_panel(
+            3,
+            "Motion (acc_rms / cardiac-band) on the same axis",
+            16,
+            "SELECT time, acc_rms FROM biofizic_live WHERE $__timeFilter(time) ORDER BY time",
+            extra_sql=[
+                "SELECT time, acc_band_cardiac FROM biofizic_live WHERE $__timeFilter(time) ORDER BY time",
+            ],
+            decimals=3,
+        ),
+    ]
+    return dashboard_meta(
+        "biofizic-live-sync", "Biofizic Live Sync", ["biofizic", "live"], panels, refresh="1s"
+    )
+
+
+def build_reliability_dashboard() -> dict:
+    """How trustworthy each verdict is (VR context): arousal vs quality, the
+    fusion weight, the HRV/HR z channels, and the Kalman gain."""
+    panels = [
+        ts_panel(
+            1,
+            "Arousal (1-10) vs confidence Q",
+            0,
+            "SELECT time, arousal_10 FROM biofizic_live WHERE $__timeFilter(time) ORDER BY time",
+            extra_sql=[
+                "SELECT time, signal_quality FROM biofizic_live WHERE $__timeFilter(time) ORDER BY time",
+            ],
+            decimals=2,
+        ),
+        ts_panel(
+            2,
+            "Fusion: z_hrv vs z_hr vs z_filtered (hrv_weight shows the blend)",
+            8,
+            "SELECT time, z_hrv FROM biofizic_live WHERE $__timeFilter(time) ORDER BY time",
+            extra_sql=[
+                "SELECT time, z_hr FROM biofizic_live WHERE $__timeFilter(time) ORDER BY time",
+                "SELECT time, z_filtered FROM biofizic_live WHERE $__timeFilter(time) ORDER BY time",
+                "SELECT time, hrv_weight FROM biofizic_live WHERE $__timeFilter(time) ORDER BY time",
+            ],
+            decimals=2,
+        ),
+        ts_panel(
+            3,
+            "Kalman gain & artifact rate (low gain / high artifacts => held verdict)",
+            16,
+            "SELECT time, kalman_gain FROM biofizic_live WHERE $__timeFilter(time) ORDER BY time",
+            extra_sql=[
+                "SELECT time, artifact_rate FROM biofizic_live WHERE $__timeFilter(time) ORDER BY time",
+            ],
+            decimals=3,
+        ),
+    ]
+    return dashboard_meta(
+        "biofizic-reliability", "Biofizic Reliability", ["biofizic", "live"], panels, refresh="1s"
+    )
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     dashboards = {
         "biofizic-hrv-analysis.json": build_hrv_dashboard(),
         "biofizic-baseline-compare.json": build_baseline_dashboard(),
-        "biofizic-motion-har.json": build_motion_dashboard(),
+        "biofizic-signal-quality.json": build_signal_quality_dashboard(),
         "biofizic-live-overview.json": build_overview_dashboard(),
         "biofizic-window-comparison.json": build_window_comparison_dashboard(),
         "biofizic-stream-sync.json": build_stream_sync_dashboard(),
         "biofizic-session-overview.json": build_session_overview_dashboard(),
+        "biofizic-all-data-live.json": build_all_data_live_dashboard(),
+        "biofizic-live-sync.json": build_live_sync_dashboard(),
+        "biofizic-reliability.json": build_reliability_dashboard(),
+        "biofizic-determinist-vs-wesad.json": build_determinist_vs_wesad_dashboard(),
+        "biofizic-ppg-failure.json": build_ppg_failure_dashboard(),
+        "biofizic-valence-demo.json": build_valence_demo_dashboard(),
     }
     for name, body in dashboards.items():
         path = OUT / name

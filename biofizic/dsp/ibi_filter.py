@@ -8,7 +8,7 @@ from biofizic.config import (
     MIN_INTERBEAT_INTERVAL_MS,
     OUTLIER_MEDIAN_DEVIATION_RATIO,
 )
-from biofizic.types import InterbeatIntervalEntry
+from biofizic.ingestion.messages import InterbeatIntervalEntry
 
 
 def filter_physiological_intervals(
@@ -36,16 +36,29 @@ def successive_interval_differences(
     entries: list[InterbeatIntervalEntry],
 ) -> list[float]:
     """
-    RMSSD input: prefer timestamp-coherent pairs, else simple consecutive delta.
+    RMSSD input: use only timestamp-coherent successive pairs.
+
+    A pair is coherent when the gap between the two beats' timestamps matches
+    the later beat's IBI within MAX_TIMESTAMP_IBI_MISMATCH_MS. Pairs that
+    straddle a dropped-beat gap are skipped, so RMSSD is not inflated by
+    differences taken across discontinuities. This mirrors the on-watch
+    HrvFeatureCalculator.successiveDiffsWithTemporalCheck (Android IbiPipeline).
+
+    When no per-beat timestamps are available (or no pair turns out coherent),
+    fall back to the plain consecutive deltas.
     """
-    diffs: list[float] = []
+    coherent: list[float] = []
     for i in range(len(entries) - 1):
         left = entries[i]
         right = entries[i + 1]
-        if left.timestamp_ms is not None and right.timestamp_ms is not None:
-            gap_ms = right.timestamp_ms - left.timestamp_ms
-            if abs(gap_ms - right.interval_ms) < MAX_TIMESTAMP_IBI_MISMATCH_MS:
-                diffs.append(float(right.interval_ms - left.interval_ms))
-                continue
-        diffs.append(float(right.interval_ms - left.interval_ms))
-    return diffs
+        if left.timestamp_ms is None or right.timestamp_ms is None:
+            continue
+        gap_ms = right.timestamp_ms - left.timestamp_ms
+        if abs(gap_ms - right.interval_ms) < MAX_TIMESTAMP_IBI_MISMATCH_MS:
+            coherent.append(float(right.interval_ms - left.interval_ms))
+    if coherent:
+        return coherent
+    return [
+        float(entries[i + 1].interval_ms - entries[i].interval_ms)
+        for i in range(len(entries) - 1)
+    ]

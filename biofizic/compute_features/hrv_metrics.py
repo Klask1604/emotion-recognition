@@ -17,11 +17,10 @@ from __future__ import annotations
 import numpy as np
 
 from biofizic.config import BAEVSKY_HISTOGRAM_BIN_MS
-from biofizic.signal import (
-    filter_physiological_intervals,
-    successive_interval_differences,
-)
-from biofizic.types import HrvMetrics, InterbeatIntervalEntry
+from biofizic.dsp.artifact_correction import correct_ibi_series
+from biofizic.dsp.ibi_filter import successive_interval_differences
+from biofizic.compute_features.results import HrvMetrics
+from biofizic.ingestion.messages import InterbeatIntervalEntry
 
 FEATURE_VECTOR_NAMES = ["rmssd", "mean_hr", "sdnn", "mean_ibi", "pnn50"]
 
@@ -52,9 +51,12 @@ def compute_baevsky_indices(intervals_ms: np.ndarray) -> tuple[float, float]:
 def compute_hrv_from_entries(
     entries: list[InterbeatIntervalEntry],
 ) -> HrvMetrics | None:
-    valid = filter_physiological_intervals(entries)
-    if len(valid) < 2:
+    # Correct artifacts by interpolation (not deletion) so RMSSD/SI are computed
+    # on a continuous series; artifact_rate is the fraction that was corrected.
+    corrected, artifact_rate = correct_ibi_series(entries)
+    if len(corrected) < 2:
         return None
+    valid = corrected
 
     values = np.array([e.interval_ms for e in valid], dtype=float)
     mean_interval = float(np.mean(values))
@@ -83,4 +85,5 @@ def compute_hrv_from_entries(
         covered_seconds=covered_seconds,
         baevsky_stress_index_raw=baevsky_raw,
         kubios_stress_index=kubios_stress,
+        artifact_rate=artifact_rate,
     )

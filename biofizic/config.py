@@ -25,9 +25,14 @@ MIN_INTERBEAT_INTERVAL_MS = 300
 MAX_INTERBEAT_INTERVAL_MS = 2000
 
 # Median-based artifact rejection. Any IBI that deviates from the running
-# median by more than this ratio is dropped. Standard 20% rule used by
-# Kubios HRV and most wrist-worn pipelines.
+# beat is flagged as an artifact when it deviates from the LOCAL median (of its
+# neighbours, see LOCAL_MEDIAN_HALF_WINDOW) by more than this ratio. Comparing
+# to the LOCAL median, not the whole-window median, is what keeps genuine HRV
+# (a wide-but-normal RR distribution) from being mislabelled as artifacts
+# (Kubios HRV artifact correction). 20% is the Malik/Kubios threshold.
 OUTLIER_MEDIAN_DEVIATION_RATIO = 0.20
+# Half-width (in beats) of the neighbourhood used for the local median above.
+LOCAL_MEDIAN_HALF_WINDOW = 5
 
 # Reconstructed IBI timestamps must match the inter-beat delta within this
 # tolerance, otherwise we fall back to consecutive-delta math. Picked to
@@ -47,6 +52,24 @@ BAEVSKY_HISTOGRAM_BIN_MS = 50
 
 
 # ---------------------------------------------------------------------------
+# Raw PPG / peak detection (RESEARCH/LEGACY — see biofizic/legacy)
+# ---------------------------------------------------------------------------
+
+# Band-pass for the PPG pulse wave: the cardiac band. Below 0.5 Hz is baseline
+# wander, above ~4 Hz is noise/motion. find_peaks then locates systolic peaks.
+PPG_BAND_LO_HZ = 0.5
+PPG_BAND_HI_HZ = 4.0
+# Minimum samples in the analysis window before peak detection is attempted.
+PPG_MIN_SAMPLES = 64
+# Minimum spacing between beats (s): 300 ms == 200 bpm ceiling, matches the IBI
+# physiological floor.
+PPG_MIN_BEAT_DISTANCE_S = 0.3
+# Rolling window the legacy raw-PPG engine analyses (s) and its PPA baseline.
+PPG_ANALYSIS_WINDOW_S = 8.0
+PPG_PPA_BASELINE_WINDOW = 60
+
+
+# ---------------------------------------------------------------------------
 # Analysis windows (LITERATURE for w30; w60/w90 EMPIRICAL validation)
 # ---------------------------------------------------------------------------
 
@@ -55,6 +78,15 @@ BAEVSKY_HISTOGRAM_BIN_MS = 50
 # justify why w30 is the right primary window for wrist HRV.
 ANALYSIS_WINDOW_SECONDS = (30, 60, 90)
 PRIMARY_DECISION_WINDOW_SECONDS = 30
+
+# Lookback used when slicing the IBI buffer for the multi-window HRV pass:
+# the longest analysis window, so every window has the data it needs.
+HRV_LOOKBACK_MS = max(ANALYSIS_WINDOW_SECONDS) * 1000
+
+# Minimum beats before any HRV statistic is computed at all (RMSSD needs >= 2
+# successive intervals). Distinct from MIN_BEATS_FOR_HRV, which gates the
+# stricter "full quality" verdict.
+MIN_BEATS_FOR_ANY_HRV = 2
 
 # How often the full epoch payload is published on biofizic/state (retained).
 EPOCH_PUBLISH_INTERVAL_SECONDS = 30
@@ -85,54 +117,125 @@ LIVE_AROUSAL_HYSTERESIS_TICKS = 3
 
 
 # ---------------------------------------------------------------------------
+# Signal quality / motion-artifact gate (LITERATURE + INFRA)
+# ---------------------------------------------------------------------------
+
+# Maximum IBI artifact rate (fraction of beats corrected over the window) for an
+# epoch's HRV to be considered reliable enough to (a) update the baseline and
+# (b) carry high confidence. NOTE: 5% is an ECG / chest-strap figure; consumer
+# wrist PPG routinely runs 10-20% corrected beats even on a good recording, so a
+# 5% gate is never met on the wrist -> confidence pinned near 0 AND the baseline
+# never updates. 15% is a realistic wrist-PPG threshold (beats are still
+# corrected by interpolation regardless; this only sets the trust cutoff).
+ARTIFACT_RATE_MAX = 0.15
+
+# Online logistic regression P(artifact | motion_energy) = sigma(b0 + b1*M),
+# used only for the anticipatory term of the quality score Q. The motion->
+# artifact relationship is learned per subject. INFRA (optimiser plumbing).
+QUALITY_LOGISTIC_LEARNING_RATE = 0.05
+# Samples collected before the still/moving classifier and the quality model
+# are trusted; until then we assume "still" (cold start).
+MIN_QUALITY_UPDATES = 8
+
+# Still/moving is decided from the cardiac-band motion energy itself, NOT from
+# the IBI artifact rate: at rest the wrist barely moves (energy ~ 0) yet wrist
+# PPG still produces IBI artifacts, so artifacts are not a motion proxy. We keep
+# a robust baseline (median + MAD) of the motion energy over a rolling window
+# and flag "moving" only when the current energy is a clear upper outlier.
+MOTION_BASELINE_WINDOW = 120          # ~2 min at 1 Hz
+# Hysteresis so the still/moving label does not flip on micro-noise: enter
+# "moving" only on a clear excursion (ENTER sigma) and return to "still" once
+# it falls back below the lower (EXIT) band.
+MOTION_ENTER_SIGMA = 4.0
+MOTION_EXIT_SIGMA = 2.0
+# Robust sigma floor for the motion-energy baseline: max of a small absolute
+# value and a fraction of the resting median (scale-free across acc_rms vs
+# acc_band_cardiac). MAD collapses to 0 when the wrist is consistently still.
+MOTION_ENERGY_SIGMA_FLOOR = 0.02
+MOTION_ENERGY_SIGMA_REL = 0.5
+# When the wrist is moving the epoch is marked unusable AND its quality is
+# multiplied by this factor, so a motion-corrupted RMSSD (low artifact rate but
+# wrong) barely moves the Kalman estimate. Motion contaminates wrist PPG even
+# when individual beats stay in physiological range.
+MOTION_MOVING_QUALITY_FACTOR = 0.1
+
+
+# ---------------------------------------------------------------------------
 # Personal baseline (EMPIRICAL)
 # ---------------------------------------------------------------------------
 
-# Number of STILL epochs collected before the personal RMSSD/SI baseline is
-# locked in. Four epochs at 30 s each gives ~2 minutes of resting data, which
-# is the shortest interval where the median is reasonably stable on GW7.
-STILL_EPOCHS_BEFORE_BASELINE_LOCK = 4
+# Robust personal baseline (log-space). RMSSD and the Kubios SI are log-normal
+# (Task Force ESC/NASPE 1996; Nunan 2010), so the baseline is estimated on
+# ln(x) with a robust location/scale: median and MAD, with sigma = 1.4826*MAD
+# (Hampel). z = (ln x - median) / sigma. This replaces the earlier fixed 15%
+# scale, which was not a statistic.
+#
+# Lock after this many resting epochs (~6 min at 30 s); fewer is too noisy for
+# a stable MAD. The estimate then slides over a rolling window of resting
+# epochs, which adapts to circadian drift without an EMA fudge factor.
+BASELINE_MIN_REST_EPOCHS = 12
+BASELINE_ROBUST_WINDOW_EPOCHS = 60
+# Numerical floor on the log-space sigma (~5% multiplicative) so z is finite
+# when a subject's resting HRV is unusually stable. INFRA, not physiological.
+BASELINE_LOG_SIGMA_FLOOR = 0.05
+# Clip the reported z-score; |z| > 4 is past the usable range of the CDF map.
+Z_SCORE_CLIP = 4.0
 
-# EMA blend factor used after the baseline is locked. 0.05 lets slow drift
-# follow circadian changes without being pulled by short bursts of activity.
-BASELINE_EMA_ALPHA = 0.05
+# Scalar Kalman smoother on the personal stress z (engine/state_estimator.py).
+# The latent autonomic state drifts slowly between 30 s epochs (small process
+# variance); each epoch is a noisy measurement whose variance scales inversely
+# with the signal quality Q, so artifact/motion-heavy epochs barely move the
+# estimate. This is the state-space replacement for the ad-hoc "hold last value"
+# patch (Kalman 1960). The process/measurement variance ratio sets how fast the
+# estimate follows real changes — these are the tunable smoothing knobs, not
+# decision thresholds.
+KALMAN_PROCESS_VAR = 0.02       # latent z drift per epoch
+KALMAN_MEAS_VAR_BASE = 0.5      # measurement variance at perfect quality (Q=1)
+KALMAN_QUALITY_FLOOR = 0.05     # floor on Q so meas variance stays finite
 
 
 # ---------------------------------------------------------------------------
-# Decision gate (EMPIRICAL, except where noted)
+# Motion-tolerant fusion (VR context classifier)
 # ---------------------------------------------------------------------------
 
-# Consecutive elevated epochs required before the gate confirms a real alert.
-# Picks up sustained sympathetic activation while rejecting one-epoch noise.
-ALERT_CONFIRMATION_EPOCH_COUNT = 2
+# The arousal measurement fed to the Kalman is a quality-weighted blend of the
+# HRV-based personal z (precise when still) and an HR-based personal z (robust
+# to wrist motion). z_fused = w*z_si + (1-w)*z_hr, with w = signal quality Q.
+# In a VR club/boxing scene (lots of motion) the HRV part is unreliable but HR
+# stays informative, so the system reports genuine high arousal (exertion /
+# excitement) instead of freezing. Motion is a context feature, never a veto.
+#
+# Confidence of the HR channel: HR is SDK-processed and fairly robust even in
+# motion, so the fused measurement keeps a usable confidence floor (the Kalman
+# still updates during motion, just leaning on HR).
+HR_CHANNEL_CONFIDENCE = 0.7
 
-# Z-score thresholds for the personal baseline. Z >= 1.0 signals deviation,
-# Z >= 1.5 signals strong deviation and can confirm an alert on its own
-# without needing the RMSSD veto. These are standard sigma thresholds; the
-# personalisation (per-subject baseline) is the empirical part.
-STRESS_INDEX_Z_ALERT = 1.0
-STRESS_INDEX_Z_ALERT_STRONG = 1.5
+# Which channel is reported as dominant for the verdict, from the HRV weight
+# (= signal quality). Above HIGH the verdict is HRV-driven (still, precise);
+# below LOW it is HR-driven (motion, robust); in between it is a blend. Used for
+# display/diagnostics only, not for the math (the fusion is continuous).
+CHANNEL_HRV_DOMINANT_ABOVE = 0.6
+CHANNEL_HR_DOMINANT_BELOW = 0.4
 
-# If RMSSD is at or below this baseline z-score the alert path is suppressed.
-# Catches the case where SI rose only because the buffer just lost a few
-# beats; without RMSSD also pointing the same direction we treat it as noise.
-RMSSD_Z_SUPPRESS_ALERT = -1.0
+# Watch->server skew above this (seconds) is treated as a delivery backlog and
+# warned about. A steady ~1-2 s is normal pipeline latency (batch buffering on
+# the watch + MQTT), so we do not warn below it.
+SKEW_BACKLOG_WARN_SEC = 5.0
 
-# Single-tick RMSSD swings beyond this fraction of the recent median, while
-# the subject is in REST, are capped. Protects against PPG artefacts where
-# one beat is misread and RMSSD spikes.
-RMSSD_SPIKE_RATIO_THRESHOLD = 0.40
 
-# Cap on arousal_10 published while an alert is being confirmed. Display
-# never crosses into the ALERT range until ALERT_CONFIRMATION_EPOCH_COUNT
-# epochs have agreed. 6 keeps the watch on "Moderat" during the wait.
-ALERT_PENDING_CAP = 6
+# ---------------------------------------------------------------------------
+# Decision gate: CUSUM alert detector (LITERATURE)
+# ---------------------------------------------------------------------------
 
-# Considered REST when HAR says STILL and 90th-percentile wrist acceleration
-# is below this value (m/s^2). The number is empirical, calibrated by
-# observing GW7 acceleration at rest on the wrist; documented in
-# docs/THESIS_LIMITATIONS.md.
-REST_ACCELERATION_P90_MAX = 0.5
+# Sustained stress is confirmed by a one-sided CUSUM on the personal
+# stress-index z-score (Page 1954; Montgomery SPC), replacing the old
+# "N consecutive elevated epochs" counter and the RMSSD spike / dual-veto
+# heuristics (artifacts are now handled by the signal-quality gate). Because z
+# is already in sigma units, the textbook SPC defaults apply directly:
+#   k = reference value (slack) the signal must persistently exceed,
+#   h = decision interval at which the accumulated evidence triggers an alert.
+CUSUM_SLACK_K = 0.5
+CUSUM_THRESHOLD_H = 4.0
 
 
 # ---------------------------------------------------------------------------
@@ -152,42 +255,22 @@ class KubiosZone:
     zone_id: KubiosZoneId
     label: str
     band_id: str
-    arousal_mid: float
-    arousal_scale_10: int
+    arousal_scale_10: int  # representative population-zone severity (1..10)
 
 
 # Stress index boundaries are the sqrt-Baevsky breakpoints used by Kubios.
-# Romanian display labels stay as-is because they are the UI strings the
-# watch face shows; do not translate them without updating the watch.
+# arousal_scale_10 is the zone's severity level used only as the pre-baseline
+# fallback (before personal calibration); the live arousal is the normal-CDF
+# of the personal z-score (see arousal_mapper). Romanian display labels stay
+# as-is because they are the UI strings the watch face shows; do not translate
+# them without updating the watch.
 STRESS_INDEX_ZONE_BOUNDS = (
-    (7.1, KubiosZoneId.LOW, "Relaxat", "low", 0.20, 2),
-    (12.2, KubiosZoneId.NORMAL, "Echilibrat", "normal", 0.50, 5),
-    (22.4, KubiosZoneId.ELEVATED, "Moderat", "elevated", 0.68, 7),
-    (30.0, KubiosZoneId.HIGH, "Alert", "high", 0.82, 8),
-    (float("inf"), KubiosZoneId.VERY_HIGH, "Ridicat", "very_high", 0.95, 10),
+    (7.1, KubiosZoneId.LOW, "Relaxat", "low", 2),
+    (12.2, KubiosZoneId.NORMAL, "Echilibrat", "normal", 5),
+    (22.4, KubiosZoneId.ELEVATED, "Moderat", "elevated", 7),
+    (30.0, KubiosZoneId.HIGH, "Alert", "high", 8),
+    (float("inf"), KubiosZoneId.VERY_HIGH, "Ridicat", "very_high", 10),
 )
-
-
-def clip_value(value: float, low: float, high: float) -> float:
-    return max(low, min(high, value))
-
-
-# ---------------------------------------------------------------------------
-# Motion / HAR (EMPIRICAL caps applied to a literature-trained classifier)
-# ---------------------------------------------------------------------------
-
-# Per-class caps on the displayed arousal_10. The WISDM HAR classifier is
-# itself trained on a public dataset, but the caps that say "if the user is
-# walking we cannot trust HRV above 5/10" are an empirical guard against
-# motion-induced PPG artefacts.
-HAR_AROUSAL_CAP_BY_CLASS = {
-    "STILL": 10,
-    "SCROLL": 6,
-    "HAND": 6,
-    "WALK": 5,
-}
-
-HAR_CLASS_NAMES = ("STILL", "SCROLL", "HAND", "WALK")
 
 
 # ---------------------------------------------------------------------------
@@ -206,26 +289,5 @@ def data_dir() -> Path:
     return local
 
 
-def models_dir() -> Path:
-    docker_models = Path("/app/models")
-    if docker_models.is_dir():
-        return docker_models
-    local = ROOT / "models"
-    local.mkdir(parents=True, exist_ok=True)
-    return local
-
-
-def user_profile_path() -> Path:
-    return data_dir() / "user_profile.json"
-
-
-def user_baseline_path() -> Path:
-    return data_dir() / "user_baseline.json"
-
-
 def rest_baseline_path() -> Path:
     return data_dir() / "rest_baseline.json"
-
-
-def motion_model_path() -> Path:
-    return data_dir() / "motion_model.json"

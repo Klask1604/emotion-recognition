@@ -1,10 +1,18 @@
 """
-Unified resting baseline store.
+Robust personal resting baseline (log-space).
+
+RMSSD and the Kubios stress index are log-normally distributed (Task Force
+ESC/NASPE 1996; Nunan 2010), so the baseline is estimated on ln(x) with a
+robust location/scale: median and MAD, sigma = 1.4826*MAD (Hampel). The
+personal z-score is z = (ln x - median) / sigma. This replaces the earlier
+fixed 15%-of-baseline scale, which was not a statistic.
 
 Rules:
-  1. Lock-in after STILL_EPOCHS_BEFORE_BASELINE_LOCK STILL observations (median).
-  2. Update with slow EMA only during STILL (never on HAND/WALK/SCROLL).
-  3. Never reset on motion change. Reset only via explicit recalibrate command.
+  1. Collect resting epochs (quality-gated by the caller) into a rolling window.
+  2. Lock after BASELINE_MIN_REST_EPOCHS; the estimate then slides over the
+     last BASELINE_ROBUST_WINDOW_EPOCHS, adapting to circadian drift without an
+     EMA fudge factor.
+  3. Never reset on motion. Reset only via explicit recalibrate command.
   4. Persist to data/rest_baseline.json
 """
 
@@ -12,123 +20,159 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from collections import deque
 from pathlib import Path
 
-import numpy as np
-
 from biofizic.config import (
-    BASELINE_EMA_ALPHA,
-    STILL_EPOCHS_BEFORE_BASELINE_LOCK,
+    BASELINE_LOG_SIGMA_FLOOR,
+    BASELINE_MIN_REST_EPOCHS,
+    BASELINE_ROBUST_WINDOW_EPOCHS,
+    Z_SCORE_CLIP,
     rest_baseline_path,
 )
-from biofizic.config import KubiosZoneId
-from biofizic.decision.arousal_mapper import kubios_zone_for_stress_index
 
 log = logging.getLogger("rest_baseline")
+
+
+def _median(values: list[float]) -> float:
+    s = sorted(values)
+    n = len(s)
+    mid = n // 2
+    if n % 2 == 1:
+        return s[mid]
+    return 0.5 * (s[mid - 1] + s[mid])
+
+
+def _mad_sigma(values: list[float], center: float) -> float:
+    """Robust sigma estimate from the median absolute deviation (Hampel)."""
+    mad = _median([abs(v - center) for v in values])
+    return max(1.4826 * mad, BASELINE_LOG_SIGMA_FLOOR)
+
+
+def _clip(value: float, bound: float) -> float:
+    return max(-bound, min(bound, value))
 
 
 class RestBaselineStore:
     def __init__(self, path: Path | None = None) -> None:
         self._path = path or rest_baseline_path()
-        self._warmup_rmssd: deque[float] = deque(maxlen=STILL_EPOCHS_BEFORE_BASELINE_LOCK)
-        self._warmup_stress_index: deque[float] = deque(
-            maxlen=STILL_EPOCHS_BEFORE_BASELINE_LOCK
-        )
-        self._baseline_rmssd_ms: float | None = None
-        self._baseline_stress_index: float | None = None
-        self._rmssd_scale: float = 15.0
+        self._ln_rmssd: deque[float] = deque(maxlen=BASELINE_ROBUST_WINDOW_EPOCHS)
+        self._ln_si: deque[float] = deque(maxlen=BASELINE_ROBUST_WINDOW_EPOCHS)
+        self._ln_hr: deque[float] = deque(maxlen=BASELINE_ROBUST_WINDOW_EPOCHS)
         self.is_ready = False
-        self.still_observation_count = 0
+        self.rest_observation_count = 0
+        # Self-reported arousal at the last calibration (0..1). Sets where the
+        # baseline sits on the arousal scale; 0.5 = neutral if never reported.
+        self.reported_baseline_arousal = 0.5
         self._load()
 
-    def observe_still(
-        self,
-        rmssd_ms: float,
-        kubios_stress_index: float,
+    def observe_resting(
+        self, rmssd_ms: float, kubios_stress_index: float, heart_rate_bpm: float = 0.0
     ) -> None:
-        """Update baseline only when user is STILL."""
+        """Add a resting epoch. The caller decides what counts as resting
+        (signal-quality gate: low motion energy and low artifact rate)."""
         if rmssd_ms <= 0 or kubios_stress_index <= 0:
             return
-        self.still_observation_count += 1
-
-        if not self.is_ready:
-            self._warmup_rmssd.append(rmssd_ms)
-            self._warmup_stress_index.append(kubios_stress_index)
-            if len(self._warmup_rmssd) < STILL_EPOCHS_BEFORE_BASELINE_LOCK:
-                return
-            self._baseline_rmssd_ms = float(np.median(self._warmup_rmssd))
-            self._baseline_stress_index = float(np.median(self._warmup_stress_index))
-            self._rmssd_scale = max(
-                8.0,
-                float(np.std(self._warmup_rmssd))
-                if len(self._warmup_rmssd) > 2
-                else 15.0,
-            )
+        self.rest_observation_count += 1
+        self._ln_rmssd.append(math.log(rmssd_ms))
+        self._ln_si.append(math.log(kubios_stress_index))
+        if heart_rate_bpm > 0:
+            self._ln_hr.append(math.log(heart_rate_bpm))
+        if not self.is_ready and len(self._ln_si) >= BASELINE_MIN_REST_EPOCHS:
             self.is_ready = True
-            self._save()
             log.info(
-                "Baseline locked: stress_index=%.2f rmssd=%.1f",
-                self._baseline_stress_index,
-                self._baseline_rmssd_ms,
+                "Baseline locked: stress_index=%.2f rmssd=%.1f (n=%d)",
+                self.baseline_stress_index or 0.0,
+                self.baseline_rmssd_ms or 0.0,
+                len(self._ln_si),
             )
-            return
-
-        zone = kubios_zone_for_stress_index(kubios_stress_index)
-        if zone.zone_id not in (KubiosZoneId.LOW, KubiosZoneId.NORMAL):
-            return
-
-        assert self._baseline_rmssd_ms is not None
-        assert self._baseline_stress_index is not None
-        alpha = BASELINE_EMA_ALPHA
-        self._baseline_rmssd_ms = (1 - alpha) * self._baseline_rmssd_ms + alpha * rmssd_ms
-        self._baseline_stress_index = (
-            (1 - alpha) * self._baseline_stress_index + alpha * kubios_stress_index
-        )
-        self._rmssd_scale = (1 - alpha) * self._rmssd_scale + alpha * max(
-            8.0, abs(self._baseline_rmssd_ms - rmssd_ms)
-        )
         self._save()
 
-    def reset_for_recalibration(self) -> None:
-        """Only call from biofizic/cmd/calibrate."""
-        self._warmup_rmssd.clear()
-        self._warmup_stress_index.clear()
-        self._baseline_rmssd_ms = None
-        self._baseline_stress_index = None
-        self._rmssd_scale = 15.0
+    def reset_for_recalibration(self, reported_arousal: float | None = None) -> None:
+        """Only call from biofizic/cmd/calibrate. `reported_arousal` (0..1) is the
+        user's self-reported state, anchoring where this baseline sits on the
+        arousal scale."""
+        self._ln_rmssd.clear()
+        self._ln_si.clear()
+        self._ln_hr.clear()
         self.is_ready = False
-        self.still_observation_count = 0
+        self.rest_observation_count = 0
+        if reported_arousal is not None:
+            self.reported_baseline_arousal = min(max(float(reported_arousal), 0.0), 1.0)
         self._save()
-        log.info("Baseline reset for recalibration")
+        log.info(
+            "Baseline reset for recalibration (reported_arousal=%.2f)",
+            self.reported_baseline_arousal,
+        )
+
+    @property
+    def arousal_offset_z(self) -> float:
+        """Probit of the self-reported baseline arousal: the z-offset so that at
+        z=0 the displayed arousal equals what the subject reported."""
+        from biofizic.engine.arousal_mapper import normal_ppf
+
+        return normal_ppf(self.reported_baseline_arousal)
 
     def stress_index_z_score(self, kubios_stress_index: float) -> float:
-        base = self._baseline_stress_index if self._baseline_stress_index else 10.0
-        scale = max(0.5, base * 0.15)
-        return float(np.clip((kubios_stress_index - base) / scale, -3.0, 3.0))
+        """z>0 means elevated stress relative to the personal resting baseline."""
+        if not self.is_ready or kubios_stress_index <= 0 or not self._ln_si:
+            return 0.0
+        values = list(self._ln_si)
+        center = _median(values)
+        sigma = _mad_sigma(values, center)
+        z = (math.log(kubios_stress_index) - center) / sigma
+        return _clip(z, Z_SCORE_CLIP)
 
     def rmssd_z_score(self, rmssd_ms: float) -> float:
-        if not self.is_ready or self._baseline_rmssd_ms is None:
+        """z>0 means RMSSD below the personal resting baseline (i.e. stress)."""
+        if not self.is_ready or rmssd_ms <= 0 or not self._ln_rmssd:
             return 0.0
-        base = self._baseline_rmssd_ms
-        scale = max(8.0, self._rmssd_scale)
-        return float(np.clip((base - rmssd_ms) / scale, -3.0, 3.0))
+        values = list(self._ln_rmssd)
+        center = _median(values)
+        sigma = _mad_sigma(values, center)
+        z = (center - math.log(rmssd_ms)) / sigma
+        return _clip(z, Z_SCORE_CLIP)
+
+    def hr_z_score(self, heart_rate_bpm: float) -> float:
+        """z>0 means HR above the personal resting baseline (arousal up).
+
+        HR is robust to wrist motion (SDK-processed), so this anchors the
+        fusion arousal when HRV is unreliable (exertion / motion)."""
+        if not self.is_ready or heart_rate_bpm <= 0 or not self._ln_hr:
+            return 0.0
+        values = list(self._ln_hr)
+        center = _median(values)
+        sigma = _mad_sigma(values, center)
+        z = (math.log(heart_rate_bpm) - center) / sigma
+        return _clip(z, Z_SCORE_CLIP)
+
+    @property
+    def baseline_heart_rate_bpm(self) -> float | None:
+        if not self._ln_hr:
+            return None
+        return math.exp(_median(list(self._ln_hr)))
 
     @property
     def baseline_stress_index(self) -> float | None:
-        return self._baseline_stress_index
+        if not self._ln_si:
+            return None
+        return math.exp(_median(list(self._ln_si)))
 
     @property
     def baseline_rmssd_ms(self) -> float | None:
-        return self._baseline_rmssd_ms
+        if not self._ln_rmssd:
+            return None
+        return math.exp(_median(list(self._ln_rmssd)))
 
     def _save(self) -> None:
         payload = {
             "is_ready": self.is_ready,
-            "still_observation_count": self.still_observation_count,
-            "baseline_stress_index": self._baseline_stress_index,
-            "baseline_rmssd_ms": self._baseline_rmssd_ms,
-            "rmssd_scale": self._rmssd_scale,
+            "rest_observation_count": self.rest_observation_count,
+            "ln_si": list(self._ln_si),
+            "ln_rmssd": list(self._ln_rmssd),
+            "ln_hr": list(self._ln_hr),
+            "reported_baseline_arousal": self.reported_baseline_arousal,
         }
         self._path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._path.with_suffix(".tmp")
@@ -141,9 +185,12 @@ class RestBaselineStore:
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))
             self.is_ready = bool(data.get("is_ready", False))
-            self.still_observation_count = int(data.get("still_observation_count", 0))
-            self._baseline_stress_index = data.get("baseline_stress_index")
-            self._baseline_rmssd_ms = data.get("baseline_rmssd_ms")
-            self._rmssd_scale = float(data.get("rmssd_scale", 15.0))
+            self.rest_observation_count = int(data.get("rest_observation_count", 0))
+            self._ln_si.extend(float(v) for v in data.get("ln_si", []))
+            self._ln_rmssd.extend(float(v) for v in data.get("ln_rmssd", []))
+            self._ln_hr.extend(float(v) for v in data.get("ln_hr", []))
+            self.reported_baseline_arousal = float(
+                data.get("reported_baseline_arousal", 0.5)
+            )
         except Exception as exc:
             log.warning("Could not load baseline file: %s", exc)

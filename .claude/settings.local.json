@@ -12,7 +12,10 @@
       "Bash(./gradlew :app:testDebugUnitTest)",
       "Bash(venv/Scripts/python.exe -c \"import services.mqtt_logger; print\\('mqtt_logger imports clean'\\)\")",
       "Bash(./gradlew :app:compileDebugKotlin)",
-      "Bash(./gradlew :app:compileDebugKotlin :app:testDebugUnitTest)"
+      "Bash(./gradlew :app:compileDebugKotlin :app:testDebugUnitTest)",
+      "Bash(sed 's/.*\\\\.//')",
+      "Bash(xargs wc -l)",
+      "WebSearch"
     ]
   }
 }
