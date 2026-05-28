@@ -299,6 +299,7 @@ class ComputeEngineService:
                 "hrv_weight": round(d.hrv_weight, 2),
                 "confidence": round(d.decision_confidence, 3),
                 "dominant_channel": d.dominant_channel,
+                "decision_fidelity": d.decision_fidelity,
                 "z_filtered": round(d.stress_index_z_filtered, 2),
                 "kalman_gain": round(d.kalman_gain, 3),
                 "arousal_10": d.display_arousal_10,
@@ -366,6 +367,11 @@ class ComputeEngineService:
             # which signal drives the verdict so the UI can show "via HR".
             "confidence": round(decision.decision_confidence, 3),
             "dominant_channel": decision.dominant_channel,
+            # "preliminary" = arousal from Kubios population zones (no personal
+            # baseline yet); "calibrated" = arousal from personal-z CDF. UI can
+            # show a badge so a calibrated verdict isn't confused with the cold
+            # start fallback.
+            "decision_fidelity": decision.decision_fidelity,
             "stress_index": round(decision.kubios_stress_index, 3),
             "baseline_si": round(decision.baseline_stress_index, 3),
             "z_si": round(decision.stress_index_z_score, 2),

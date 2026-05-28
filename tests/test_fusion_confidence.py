@@ -17,8 +17,10 @@ from biofizic.config import (
     BASELINE_MIN_REST_EPOCHS,
     HR_CHANNEL_CONFIDENCE,
 )
+from biofizic.engine.decision import DecisionState, decide
 from biofizic.engine.pipeline import PhysiologyPipeline
 from biofizic.engine.signal_quality import SignalQuality
+from biofizic.ingestion.messages import SensorBatchMessage
 
 
 def _metrics(rmssd: float = 40.0, si: float = 12.0, hr: float = 80.0) -> HrvMetrics:
@@ -48,13 +50,15 @@ def _decide(pipeline: PhysiologyPipeline, quality: SignalQuality, sdk_hr: float)
     # whose absence (0) means there is no robust motion channel.
     metrics = _metrics(hr=80.0)
     multi = MultiWindowHrvResult(None, metrics, None, None)
-    return pipeline._build_decision(
+    sensor = SensorBatchMessage(timestamp_ms=0, heart_rate_bpm=sdk_hr)
+    return decide(
         primary=metrics,
         multi=multi,
+        sensor=sensor,
         quality=quality,
-        sdk_hr=sdk_hr,
+        baseline=pipeline.baseline,
+        state=pipeline.decision_state,
         publish_epoch=True,
-        now_ts=0.0,
     )
 
 
@@ -108,3 +112,51 @@ def test_no_hr_reports_none_channel(tmp_path: Path):
     assert d.dominant_channel == "none"
     # Without a robust channel, confidence does not get the HR floor.
     assert d.decision_confidence < 0.1
+
+
+def _cold_pipeline(tmp_path: Path) -> PhysiologyPipeline:
+    """A pipeline whose baseline has NOT been locked yet (no resting epochs)."""
+    p = PhysiologyPipeline()
+    p.baseline = type(p.baseline)(path=tmp_path / "rest_baseline.json")
+    assert not p.baseline.is_ready
+    return p
+
+
+def test_preliminary_fidelity_pre_baseline(tmp_path: Path):
+    """Before baseline lock the verdict comes from Kubios population zones —
+    decision must declare itself preliminary so the UI can show a badge."""
+    from biofizic.config import PRELIMINARY_CONFIDENCE_CAP
+
+    pipeline = _cold_pipeline(tmp_path)
+    still_q = SignalQuality(
+        quality=0.9,
+        usable=True,
+        artifact_rate=0.0,
+        motion_energy=0.0,
+        p_artifact=0.05,
+        motion_state="still",
+    )
+    d = _decide(pipeline, still_q, sdk_hr=66.0)
+    assert d.decision_fidelity == "preliminary"
+    # Confidence must be capped so a preliminary verdict cannot look like a
+    # calibrated one in the UI (was: 0.9 of clean HRV → looked fully calibrated).
+    assert d.decision_confidence <= PRELIMINARY_CONFIDENCE_CAP + 1e-6
+    # Baseline label is still "pending" — that's the existing convention.
+    assert d.baseline_label == "pending"
+
+
+def test_calibrated_fidelity_after_baseline(tmp_path: Path):
+    """Once the personal baseline locks, fidelity flips to calibrated and the
+    confidence cap is lifted (high-q still epoch can reach ~0.9)."""
+    pipeline = _ready_pipeline(tmp_path)
+    still_q = SignalQuality(
+        quality=0.9,
+        usable=True,
+        artifact_rate=0.0,
+        motion_energy=0.0,
+        p_artifact=0.05,
+        motion_state="still",
+    )
+    d = _decide(pipeline, still_q, sdk_hr=66.0)
+    assert d.decision_fidelity == "calibrated"
+    assert d.decision_confidence >= 0.8  # cap no longer applies

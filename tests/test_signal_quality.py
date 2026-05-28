@@ -47,3 +47,19 @@ def test_motion_state_still_during_cold_start():
     state = SignalQualityState()
     # Before MIN_QUALITY_UPDATES samples we have no baseline -> assume still.
     assert update_and_score(motion_energy=0.0, artifact_rate=0.0, state=state).motion_state == "still"
+
+
+def test_no_signal_forces_quality_zero():
+    """When the IBI buffer is empty (has_signal=False), artifact_rate=0 is
+    not 'perfect' — it's the absence of data. We must report Q=0 + usable=False
+    so the UI doesn't show fake-high confidence (was the long-standing bug
+    where signal_quality stayed at ~0.97 during silent watch periods)."""
+    state = SignalQualityState()
+    r = update_and_score(
+        motion_energy=0.0, artifact_rate=0.0, state=state, has_signal=False,
+    )
+    assert r.quality == 0.0
+    assert r.usable is False
+    # Motion baseline should still tick along so quality recovers immediately
+    # when beats start arriving again.
+    assert len(state.motion_energy) == 1

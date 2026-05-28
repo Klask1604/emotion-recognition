@@ -129,12 +129,8 @@ LIVE_AROUSAL_HYSTERESIS_TICKS = 3
 # corrected by interpolation regardless; this only sets the trust cutoff).
 ARTIFACT_RATE_MAX = 0.15
 
-# Online logistic regression P(artifact | motion_energy) = sigma(b0 + b1*M),
-# used only for the anticipatory term of the quality score Q. The motion->
-# artifact relationship is learned per subject. INFRA (optimiser plumbing).
-QUALITY_LOGISTIC_LEARNING_RATE = 0.05
-# Samples collected before the still/moving classifier and the quality model
-# are trusted; until then we assume "still" (cold start).
+# Samples collected before the still/moving classifier is trusted; until then
+# we assume "still" (cold start). Quality is deterministic — no learned weights.
 MIN_QUALITY_UPDATES = 8
 
 # Still/moving is decided from the cardiac-band motion energy itself, NOT from
@@ -221,6 +217,18 @@ CHANNEL_HR_DOMINANT_BELOW = 0.4
 # warned about. A steady ~1-2 s is normal pipeline latency (batch buffering on
 # the watch + MQTT), so we do not warn below it.
 SKEW_BACKLOG_WARN_SEC = 5.0
+
+# Pre-baseline fallback (population Kubios zones) verdict honesty cap. Before
+# the personal baseline locks (~6 min of resting epochs), arousal_10 comes
+# from Kubios populational STRESS_INDEX_ZONE_BOUNDS, not from the personal z.
+# That mapping is approximate per-user — the verdict is meaningful (real-time
+# from the first epoch) but not personalised. We expose this honestly by:
+#   1. setting decision_fidelity = "preliminary" in PhysiologyDecision, and
+#   2. capping fused_confidence at this value so the UI can gate the badge
+#      ("preliminary" vs "calibrated") on confidence alone if desired.
+# After baseline.is_ready flips True, fidelity = "calibrated" and the cap is
+# lifted — confidence can rise to HR_CHANNEL_CONFIDENCE / quality.quality.
+PRELIMINARY_CONFIDENCE_CAP = 0.5
 
 
 # ---------------------------------------------------------------------------

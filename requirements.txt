@@ -13,7 +13,8 @@ pydantic>=2.0.0
 scipy>=1.11.0          # PPG band-pass + peak detection (FAZA D), WESAD R-peaks
 scikit-learn>=1.3.0    # WESAD RandomForest (train/train_wesad.py)
 joblib>=1.3.0          # load the trained WESAD model
+neurokit2>=0.2.0       # NK shadow validation in services/test_engine.py + HRV
+                       # reference oracle in tests/test_reference_hrv.py
 
 # Dev / test
 pytest>=8.0.0
-neurokit2>=0.2.0       # dev-only HRV reference oracle (tests/test_reference_hrv.py)

@@ -1,5 +1,5 @@
 """
-Signal-quality gate: a physically grounded replacement for HAR arousal caps.
+Signal-quality gate: deterministic, hysteresis-stabilised wrist HRV reliability.
 
 The validity of wrist HRV is limited by motion contaminating the optical PPG
 and by the IBI artifacts that result. We measure both directly instead of
@@ -18,20 +18,23 @@ baseline (robust median + MAD), NOT from A: at rest the wrist is nearly
 motionless (M ~ 0) yet wrist PPG still yields IBI artifacts, so the artifact
 rate is not a motion proxy.
 
-The motion -> artifact relationship is additionally learned per subject by
-online logistic regression P(artifact | M) = sigma(b0 + b1*M) and feeds the
-anticipatory term of the quality score.
+Q is a deterministic function (no per-user online learning):
+    Q = artifact_quality(A) * motion_penalty(motion_state)
+The previous implementation also held an SGD logistic regression P(artifact|M)
+that fed an anticipatory term. Removed: the gradient target was the *observed*
+artifact rate (self-supervised noise), so the learned weights drifted without
+a useful ground truth and the term mostly subtracted a small constant from Q
+post-warm-up. The deterministic formula keeps the same shape (smooth degrade)
+without unverified state.
 
 Outputs:
-  quality Q in [0, 1] = (1 - min(A / A_MAX, 1)) * (1 - P(artifact | M))
-      published as the decision confidence.
-  usable  = A <= A_MAX (Kubios-aligned reliability cutoff).
-  motion_state = still / moving.
+  quality Q in [0, 1] — the decision-confidence component contributed by HRV.
+  usable  = A <= A_MAX and motion_state == "still" (Kubios-aligned cutoff).
+  motion_state = still / moving from the robust energy baseline + hysteresis.
 """
 
 from __future__ import annotations
 
-import math
 from collections import deque
 from dataclasses import dataclass, field
 
@@ -44,22 +47,7 @@ from biofizic.config import (
     MOTION_ENTER_SIGMA,
     MOTION_EXIT_SIGMA,
     MOTION_MOVING_QUALITY_FACTOR,
-    QUALITY_LOGISTIC_LEARNING_RATE,
 )
-
-
-def _sigmoid(x: float) -> float:
-    # Numerically stable logistic.
-    if x >= 0.0:
-        z = math.exp(-x)
-        return 1.0 / (1.0 + z)
-    z = math.exp(x)
-    return z / (1.0 + z)
-
-
-def _logit(p: float) -> float:
-    p = min(max(p, 1e-6), 1.0 - 1e-6)
-    return math.log(p / (1.0 - p))
 
 
 def _median(values: list[float]) -> float:
@@ -73,12 +61,8 @@ def _median(values: list[float]) -> float:
 
 @dataclass
 class SignalQualityState:
-    """Per-subject mutable state across epochs."""
+    """Per-subject mutable state for the still/moving baseline."""
 
-    # Logistic weights for the anticipatory P(artifact | motion) term.
-    b0: float = _logit(ARTIFACT_RATE_MAX)
-    b1: float = 0.0
-    n_updates: int = 0
     # Rolling window of recent motion energy for the robust still/moving baseline.
     motion_energy: deque[float] = field(
         default_factory=lambda: deque(maxlen=MOTION_BASELINE_WINDOW)
@@ -108,11 +92,11 @@ class SignalQualityState:
 
 @dataclass(frozen=True)
 class SignalQuality:
-    quality: float          # Q in [0, 1], used as decision confidence
-    usable: bool            # A <= ARTIFACT_RATE_MAX
+    quality: float          # Q in [0, 1], the HRV-channel confidence
+    usable: bool            # A <= ARTIFACT_RATE_MAX and not moving
     artifact_rate: float
     motion_energy: float
-    p_artifact: float       # learned P(artifact | M) after the update
+    p_artifact: float       # legacy slot, kept for payload compatibility (always 0)
     motion_state: str       # "still" | "moving"
 
 
@@ -121,23 +105,35 @@ def update_and_score(
     motion_energy: float,
     artifact_rate: float,
     state: SignalQualityState,
+    has_signal: bool = True,
 ) -> SignalQuality:
-    """Update the per-user model with this epoch and return its quality."""
+    """Score the current epoch and update the motion baseline.
+
+    `has_signal=False` means the IBI buffer was empty / below the HRV minimum:
+    no beats were evaluated, so artifact_rate=0.0 is a degenerate value (0/0
+    is not 'perfect'). We still classify motion (for the running baseline) and
+    return Q=0 + usable=False so downstream UIs do NOT show fake-high
+    confidence in nothing.
+    """
     m = max(0.0, float(motion_energy))
+    if not has_signal:
+        # Keep the motion baseline current — that estimator is independent of
+        # IBI data and otherwise stalls during silent periods.
+        motion_state = state.classify_motion(m)
+        state.motion_energy.append(m)
+        return SignalQuality(
+            quality=0.0,
+            usable=False,
+            artifact_rate=0.0,
+            motion_energy=m,
+            p_artifact=0.0,
+            motion_state=motion_state,
+        )
     a = min(1.0, max(0.0, float(artifact_rate)))
 
-    # One SGD step of logistic regression using the observed artifact rate as a
-    # soft target. d/db (cross-entropy) = (p - a) * [1, m].
-    p = _sigmoid(state.b0 + state.b1 * m)
-    grad = p - a
-    lr = QUALITY_LOGISTIC_LEARNING_RATE
-    state.b0 -= lr * grad
-    state.b1 -= lr * grad * m
-    state.n_updates += 1
-    p_after = _sigmoid(state.b0 + state.b1 * m)
-
-    # Motion state from the energy's own baseline (independent of artifacts),
-    # classified before appending so the current sample does not mask itself.
+    # Classify motion BEFORE appending so the current sample does not mask
+    # itself when it is an outlier (the same epoch's value would shift the
+    # baseline used to evaluate it).
     motion_state = state.classify_motion(m)
     state.motion_energy.append(m)
     moving = motion_state == "moving"
@@ -146,7 +142,7 @@ def update_and_score(
     # reliability cutoff) instead of snapping to 0 the moment A exceeds it — so
     # the displayed confidence is informative, not stuck at 0%.
     artifact_quality = 1.0 / (1.0 + (a / ARTIFACT_RATE_MAX) ** 2)
-    quality = artifact_quality * (1.0 - p_after)
+    quality = artifact_quality
     if moving:
         # Motion corrupts wrist PPG even when beats stay in range (low artifact
         # rate but wrong RMSSD), so a moving epoch is not trustworthy.
@@ -158,6 +154,6 @@ def update_and_score(
         usable=usable,
         artifact_rate=a,
         motion_energy=m,
-        p_artifact=p_after,
+        p_artifact=0.0,
         motion_state=motion_state,
     )

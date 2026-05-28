@@ -80,6 +80,10 @@ class PhysiologyDecision:
     # "hrv" (still, precise), "hr" (motion, robust), "blend", or "none" (no HR).
     decision_confidence: float = 0.0
     dominant_channel: str = "hrv"
+    # Verdict fidelity. "preliminary" means arousal_10 came from the Kubios
+    # population zones (no personal calibration yet); "calibrated" means it
+    # came from the personal-z CDF. UIs can gate display badges on this.
+    decision_fidelity: str = "calibrated"
     multi_window: MultiWindowHrvResult | None = None
 
 

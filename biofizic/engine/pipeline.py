@@ -7,13 +7,8 @@ import time
 from dataclasses import dataclass
 
 from biofizic.engine.baseline import RestBaselineStore
-from biofizic.engine.arousal_mapper import (
-    arousal_scale_10_to_label,
-    personal_arousal_10,
-)
-from biofizic.engine.decision_gate import DecisionGateState, apply_decision_gate
+from biofizic.engine.decision import DecisionState, decide
 from biofizic.engine.signal_quality import SignalQualityState, update_and_score
-from biofizic.engine.state_estimator import StressStateEstimator
 from biofizic.logging import format_decision_block
 from biofizic.compute_features.results import (
     HrvMetrics,
@@ -28,9 +23,6 @@ from biofizic.ingestion.messages import (
     SensorBatchMessage,
 )
 from biofizic.config import (
-    CHANNEL_HR_DOMINANT_BELOW,
-    CHANNEL_HRV_DOMINANT_ABOVE,
-    HR_CHANNEL_CONFIDENCE,
     HRV_LOOKBACK_MS,
     MIN_BEATS_FOR_ANY_HRV,
     PRIMARY_DECISION_WINDOW_SECONDS,
@@ -67,8 +59,7 @@ class PhysiologyPipeline:
         self.multi_window = MultiWindowProcessor()
         self.baseline = RestBaselineStore()
         self.quality_state = SignalQualityState()
-        self.estimator = StressStateEstimator()
-        self.decision_gate_state = DecisionGateState()
+        self.decision_state = DecisionState()
         self.state = PipelineState()
 
     def ingest_ibi_batch(self, batch: IbiBatchMessage) -> None:
@@ -133,10 +124,19 @@ class PhysiologyPipeline:
             PRIMARY_DECISION_WINDOW_SECONDS * 1000, end_ms=end_ms
         ) or 0.0
         artifact_rate = primary.artifact_rate if primary is not None else 0.0
+        # Pass has_signal=False when the primary window has no beats; without
+        # this flag artifact_rate=0 would be treated as "perfect" and
+        # signal_quality would report ~0.97 on an empty IBI buffer, masking
+        # silent watch periods as high-confidence (the source of the long-
+        # standing fake-baseline-ready bug).
+        has_signal = (
+            primary is not None and primary.beat_count >= MIN_BEATS_FOR_ANY_HRV
+        )
         quality = update_and_score(
             motion_energy=motion_energy,
             artifact_rate=artifact_rate,
             state=self.quality_state,
+            has_signal=has_signal,
         )
 
         sdk_hr = sensor.heart_rate_bpm if sensor else 0.0
@@ -158,14 +158,21 @@ class PhysiologyPipeline:
             and primary is not None
             and primary.beat_count >= MIN_BEATS_FOR_ANY_HRV
         ):
-            decision = self._build_decision(
+            decision = decide(
                 primary=primary,
                 multi=multi,
+                sensor=sensor,
                 quality=quality,
-                sdk_hr=sdk_hr,
+                baseline=self.baseline,
+                state=self.decision_state,
                 publish_epoch=publish_epoch,
-                now_ts=now_ts,
             )
+            if publish_epoch:
+                self.state.epoch_count += 1
+                try:
+                    log.info(format_decision_block(decision))
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("decision log formatting failed: %s", exc)
 
         self.state.last_decision_at = now_ts
         return MultiWindowResult(
@@ -183,114 +190,6 @@ class PhysiologyPipeline:
             baseline_ready=self.baseline.is_ready,
         )
 
-    def _build_decision(
-        self,
-        *,
-        primary: HrvMetrics,
-        multi: MultiWindowHrvResult,
-        quality,
-        sdk_hr: float,
-        publish_epoch: bool,
-        now_ts: float,
-    ) -> PhysiologyDecision:
-        stress_z = (
-            self.baseline.stress_index_z_score(primary.kubios_stress_index)
-            if self.baseline.is_ready
-            else 0.0
-        )
-        hr_z = self.baseline.hr_z_score(sdk_hr) if self.baseline.is_ready else 0.0
-
-        # Motion-tolerant fusion: blend the HRV-based z (precise when still) with
-        # the HR-based z (robust in motion), weighted by signal quality. In a VR
-        # active scene (low Q) the verdict leans on HR -> genuine high arousal,
-        # instead of freezing. The fused measurement keeps a confidence floor
-        # from the HR channel so the Kalman still updates during motion.
-        hrv_weight = quality.quality
-        z_fused = hrv_weight * stress_z + (1.0 - hrv_weight) * hr_z
-        # Honest, multi-channel confidence: when HRV quality (hrv_weight) is low
-        # in motion, the HR channel still carries the verdict, so confidence
-        # floors near HR_CHANNEL_CONFIDENCE instead of collapsing to 0. If the
-        # SDK gives no HR (sdk_hr<=0) there is no robust channel -> no floor.
-        hr_present = sdk_hr > 0.0 and self.baseline.is_ready
-        hr_conf = HR_CHANNEL_CONFIDENCE if hr_present else 0.0
-        fused_confidence = hrv_weight * quality.quality + (1.0 - hrv_weight) * hr_conf
-        if hrv_weight >= CHANNEL_HRV_DOMINANT_ABOVE:
-            dominant_channel = "hrv"
-        elif hrv_weight <= CHANNEL_HR_DOMINANT_BELOW:
-            dominant_channel = "hr" if hr_present else "none"
-        else:
-            dominant_channel = "blend"
-
-        # Fold z_fused into the Kalman smoother ONCE PER EPOCH (publish_epoch).
-        # run() is called every second on the same rolling 30 s window; updating
-        # every second would track that 1 Hz re-noise and make arousal jump.
-        if publish_epoch and self.baseline.is_ready and primary.kubios_stress_index > 0:
-            z_filtered, kalman_gain = self.estimator.update(z_fused, fused_confidence)
-        else:
-            z_filtered, kalman_gain = self.estimator.value(), 0.0
-
-        offset_z = self.baseline.arousal_offset_z
-        gate = apply_decision_gate(
-            kubios_stress_index=primary.kubios_stress_index,
-            stress_index_z_filtered=z_filtered,
-            quality=quality,
-            baseline_ready=self.baseline.is_ready,
-            gate_state=self.decision_gate_state,
-            arousal_offset_z=offset_z,
-        )
-        reason = gate.decision_reason
-        if gate.gate_mode not in ("personal_z", "population_zone") and gate.gate_mode not in reason:
-            reason = f"{reason}|{gate.gate_mode}"
-
-        baseline_si = float(self.baseline.baseline_stress_index or 0.0)
-        if self.baseline.is_ready:
-            baseline_label = arousal_scale_10_to_label(
-                personal_arousal_10(z_filtered, offset_z)
-            )
-        else:
-            baseline_label = "pending"
-        labels_agree = self.baseline.is_ready and gate.kubios_label == baseline_label
-
-        if publish_epoch:
-            self.state.epoch_count += 1
-
-        decision = PhysiologyDecision(
-            display_label=gate.display_label,
-            display_arousal_10=gate.display_arousal_10,
-            kubios_label=gate.kubios_label,
-            baseline_label=baseline_label,
-            labels_agree=labels_agree,
-            kubios_stress_index=primary.kubios_stress_index,
-            baseline_stress_index=baseline_si,
-            stress_index_z_score=stress_z,
-            rmssd_ms=primary.rmssd_ms,
-            mean_heart_rate_bpm=primary.mean_heart_rate_bpm,
-            motion_state=quality.motion_state,
-            signal_quality=quality.quality,
-            artifact_rate=quality.artifact_rate,
-            motion_energy=quality.motion_energy,
-            alert=gate.alert,
-            decision_reason=reason,
-            baseline_ready=self.baseline.is_ready,
-            stress_index_z_filtered=z_filtered,
-            kalman_gain=kalman_gain,
-            hr_z_score=hr_z,
-            hrv_weight=hrv_weight,
-            decision_confidence=fused_confidence,
-            dominant_channel=dominant_channel,
-            multi_window=multi,
-        )
-
-        if publish_epoch:
-            # Logging must never take down the decision pipeline.
-            try:
-                log.info(format_decision_block(decision))
-            except Exception as exc:  # noqa: BLE001
-                log.warning("decision log formatting failed: %s", exc)
-
-        return decision
-
     def reset_baseline(self, reported_arousal: float | None = None) -> None:
         self.baseline.reset_for_recalibration(reported_arousal)
-        self.estimator.reset()
-        self.decision_gate_state.cusum.reset()
+        self.decision_state.reset()

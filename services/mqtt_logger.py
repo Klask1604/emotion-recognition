@@ -69,7 +69,8 @@ STRING_FIELDS: dict[str, list[str]] = {}
 # String fields stored as InfluxDB tags (used for Grafana filtering / coloring).
 TAG_FIELDS: dict[str, list[str]] = {
     "biofizic/state": [
-        "emotion", "emotion_baseline", "motion_state", "why", "dominant_channel",
+        "emotion", "emotion_baseline", "motion_state", "why",
+        "dominant_channel", "decision_fidelity",
     ],
     "biofizic/state/live": [
         "emotion", "motion_state", "data_quality", "window_used",
@@ -102,7 +103,7 @@ FLOAT_FIELDS["biofizic/live"] = [
     "confidence", "signal_quality", "artifact_rate",
     "acc_rms", "acc_p90", "acc_std", "gyro_rms", "gyro_p90", "gyro_std", "acc_band_cardiac",
 ]
-TAG_FIELDS["biofizic/live"] = ["motion_state", "dominant_channel"]
+TAG_FIELDS["biofizic/live"] = ["motion_state", "dominant_channel", "decision_fidelity"]
 BOOL_FIELDS["biofizic/live"] = ["alert", "baseline_ready"]
 
 # Parallel research/legacy engines (never feed VR; for comparison dashboards).
