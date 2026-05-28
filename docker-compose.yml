@@ -97,6 +97,27 @@ services:
       influxdb-init:
         condition: service_completed_successfully
 
+  # Manual state publisher for VR testing (classifier OFF). Publishes the
+  # biofizic/state schema Unity reads, so you can drive transitions by HTTP.
+  # Not started by default: `docker compose up -d state-api`.
+  state-api:
+    <<: *python-service
+    container_name: biofizic-state-api
+    profiles: ["test"]
+    command:
+      - uvicorn
+      - services.state_api:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8200"
+    environment:
+      PYTHONPATH: /app
+      MQTT_BROKER: ${MQTT_BROKER:-localhost}
+      MQTT_PORT: "${MQTT_PORT:-1883}"
+    ports:
+      - "8200:8200"
+
 volumes:
   influxdb-data:
   grafana-data:

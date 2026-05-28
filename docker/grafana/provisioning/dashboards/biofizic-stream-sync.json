@@ -9,12 +9,12 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "5s",
   "panels": [
     {
       "id": 1,
-      "title": "Last anchor delay (ms)",
+      "title": "Anchor delay (now, ms) — should be >=0",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -74,7 +74,7 @@
     },
     {
       "id": 2,
-      "title": "Last seq",
+      "title": "Seq (now) — should increment by 1/s",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -134,7 +134,7 @@
     },
     {
       "id": 3,
-      "title": "Last IBI count",
+      "title": "IBI count (last batch)",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -194,7 +194,7 @@
     },
     {
       "id": 4,
-      "title": "Last cardiac-band energy",
+      "title": "Cardiac-band energy (now)",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -254,7 +254,7 @@
     },
     {
       "id": 5,
-      "title": "Atomic anchor delay (ts_anchor - ts_publish) [ms]",
+      "title": "Anchor delay over time — stays >=0 if batch is atomic",
       "type": "timeseries",
       "gridPos": {
         "h": 7,
@@ -312,7 +312,7 @@
     },
     {
       "id": 6,
-      "title": "IBI count per batch (Samsung HR bursts every ~4 s)",
+      "title": "IBI per batch — bursty Samsung HR (~every 4s)",
       "type": "timeseries",
       "gridPos": {
         "h": 7,
@@ -370,7 +370,7 @@
     },
     {
       "id": 7,
-      "title": "Cardiac-band motion energy per batch (0.5-4 Hz)",
+      "title": "Cardiac-band motion per batch (0.5-4 Hz)",
       "type": "timeseries",
       "gridPos": {
         "h": 7,
@@ -428,7 +428,7 @@
     },
     {
       "id": 8,
-      "title": "Skin temp age at publish [ms]",
+      "title": "Skin temp age at publish (ms) — sensor freshness",
       "type": "timeseries",
       "gridPos": {
         "h": 6,
@@ -486,7 +486,7 @@
     },
     {
       "id": 9,
-      "title": "Sequence number (should increment by 1 per second)",
+      "title": "Seq over time — +1 per second = no dropped batches",
       "type": "timeseries",
       "gridPos": {
         "h": 5,

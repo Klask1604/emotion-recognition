@@ -181,7 +181,7 @@ def build_hrv_dashboard() -> dict:
     panels = [
         stat_panel(
             1,
-            "RMSSD 30s",
+            "RMSSD 30s (now) — higher = calmer",
             "SELECT rmssd AS v FROM biofizic_state WHERE $__timeFilter(time) AND rmssd > 0 ORDER BY time DESC LIMIT 1",
             0,
             0,
@@ -189,7 +189,7 @@ def build_hrv_dashboard() -> dict:
         ),
         stat_panel(
             2,
-            "Stress index",
+            "Stress index (now) — higher = more stress",
             "SELECT stress_index AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             6,
             0,
@@ -197,7 +197,7 @@ def build_hrv_dashboard() -> dict:
         ),
         stat_panel(
             3,
-            "Label Kubios",
+            "Label: Kubios (population)",
             "SELECT emotion AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             12,
             0,
@@ -205,7 +205,7 @@ def build_hrv_dashboard() -> dict:
         ),
         stat_panel(
             4,
-            "Label baseline",
+            "Label: personal baseline",
             "SELECT emotion_baseline AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             18,
             0,
@@ -213,21 +213,21 @@ def build_hrv_dashboard() -> dict:
         ),
         ts_panel(
             5,
-            "RMSSD multi-window (30/60/90 s)",
+            "RMSSD 30/60/90s — short reacts fast, long is stable",
             4,
             "SELECT time, rmssd_w30, rmssd_w60, rmssd_w90 FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
             unit="ms",
         ),
         ts_panel(
             6,
-            "Stress index multi-window",
+            "Stress index 30/60/90s — compare window responsiveness",
             12,
             "SELECT time, stress_index_w30, stress_index_w60, stress_index_w90 FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
             decimals=2,
         ),
         ts_panel(
             7,
-            "Heart rate vs RMSSD",
+            "HR vs RMSSD — should move inversely if signal is valid",
             20,
             "SELECT time, mean_hr AS hr_bpm FROM biofizic_state WHERE $__timeFilter(time) AND mean_hr > 0 ORDER BY time",
             extra_sql=[
@@ -236,7 +236,7 @@ def build_hrv_dashboard() -> dict:
             unit="none",
         ),
     ]
-    return dashboard_meta("biofizic-hrv-analysis", "Biofizic HRV Analysis", ["biofizic", "hrv"], panels, version=3)
+    return dashboard_meta("biofizic-hrv-analysis", "Biofizic HRV Analysis", ["biofizic", "hrv"], panels, version=4)
 
 
 def build_baseline_dashboard() -> dict:
@@ -249,13 +249,13 @@ def build_baseline_dashboard() -> dict:
     panels = [
         timeline_panel(
             1,
-            "Kubios vs baseline labels (text)",
+            "Kubios vs personal labels — watch where they disagree",
             "SELECT time, emotion, emotion_baseline FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
             0,
         ),
         ts_panel(
             2,
-            "Label levels (1=Relaxat … 5=Ridicat) + agreement",
+            "Label levels 1-5 + agreement — gap = population vs personal differ",
             6,
             label_levels,
             extra_sql=[
@@ -268,7 +268,7 @@ def build_baseline_dashboard() -> dict:
         ),
         ts_panel(
             3,
-            "Stress index vs personal baseline",
+            "Stress index now vs your resting baseline",
             13,
             "SELECT time, stress_index AS si_kubios FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
             extra_sql=[
@@ -278,7 +278,7 @@ def build_baseline_dashboard() -> dict:
         ),
         ts_panel(
             4,
-            "Stress index z-score",
+            "Stress z-score — >0 above your rest, <0 below",
             21,
             "SELECT time, z_si FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
             min_v=-3,
@@ -287,7 +287,7 @@ def build_baseline_dashboard() -> dict:
         ),
     ]
     return dashboard_meta(
-        "biofizic-baseline-compare", "Biofizic Baseline Compare", ["biofizic", "baseline"], panels, version=3
+        "biofizic-baseline-compare", "Biofizic Baseline Compare", ["biofizic", "baseline"], panels, version=4
     )
 
 
@@ -295,7 +295,7 @@ def build_signal_quality_dashboard() -> dict:
     panels = [
         stat_panel(
             1,
-            "Motion state",
+            "Motion state (now)",
             "SELECT motion_state AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             0,
             0,
@@ -304,7 +304,7 @@ def build_signal_quality_dashboard() -> dict:
         ),
         stat_panel(
             2,
-            "Signal quality (Q)",
+            "Signal quality Q (now) — 1=clean, 0=unusable",
             "SELECT signal_quality AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             6,
             0,
@@ -313,7 +313,7 @@ def build_signal_quality_dashboard() -> dict:
         ),
         stat_panel(
             3,
-            "IBI artifact rate",
+            "IBI artifact rate (now) — lower is better",
             "SELECT artifact_rate AS v FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             12,
             0,
@@ -322,14 +322,14 @@ def build_signal_quality_dashboard() -> dict:
         ),
         timeline_panel(
             4,
-            "Motion state over time",
+            "Motion timeline — still vs moving",
             "SELECT time, motion_state FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
             4,
             h=5,
         ),
         ts_panel(
             5,
-            "Signal quality vs artifact rate",
+            "Q vs artifact rate — Q drops as artifacts rise",
             9,
             "SELECT time, signal_quality FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
             extra_sql=[
@@ -342,7 +342,7 @@ def build_signal_quality_dashboard() -> dict:
         ),
         ts_panel(
             6,
-            "Cardiac-band motion energy vs acceleration (1 Hz batch)",
+            "Cardiac-band motion vs total accel — the part that corrupts PPG",
             16,
             "SELECT time, acc_band_cardiac FROM biofizic_acquisition_batch WHERE $__timeFilter(time) ORDER BY time",
             extra_sql=[
@@ -355,7 +355,7 @@ def build_signal_quality_dashboard() -> dict:
         "Biofizic Signal Quality",
         ["biofizic", "quality"],
         panels,
-        version=1,
+        version=2,
     )
 
 
@@ -364,7 +364,7 @@ def build_overview_dashboard() -> dict:
     panels = [
         stat_panel(
             1,
-            "Arousal (live)",
+            "Arousal now (1-10)",
             "SELECT arousal_10 AS v FROM biofizic_state_live "
             "WHERE $__timeFilter(time) AND arousal_10 IS NOT NULL ORDER BY time DESC LIMIT 1",
             0,
@@ -373,7 +373,7 @@ def build_overview_dashboard() -> dict:
         ),
         stat_panel(
             2,
-            "Kubios label",
+            "Kubios label (now)",
             "SELECT emotion AS v FROM biofizic_state_live "
             "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             6,
@@ -382,7 +382,7 @@ def build_overview_dashboard() -> dict:
         ),
         stat_panel(
             3,
-            "IBI buffer size",
+            "IBI buffer — beats available for HRV",
             "SELECT ibi_buffer_size AS v FROM biofizic_state_live "
             "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             12,
@@ -391,7 +391,7 @@ def build_overview_dashboard() -> dict:
         ),
         stat_panel(
             4,
-            "Data quality",
+            "Data quality (now)",
             "SELECT data_quality AS v FROM biofizic_state_live "
             "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             18,
@@ -400,7 +400,7 @@ def build_overview_dashboard() -> dict:
         ),
         ts_panel(
             5,
-            "Arousal (live 1 Hz)",
+            "Arousal 1Hz — live activation trend",
             4,
             "SELECT time, arousal_10 FROM biofizic_state_live "
             "WHERE $__timeFilter(time) AND arousal_10 IS NOT NULL ORDER BY time",
@@ -410,7 +410,7 @@ def build_overview_dashboard() -> dict:
         ),
         ts_panel(
             6,
-            "RMSSD and stress index (live)",
+            "RMSSD & stress index (live) — the markers behind arousal",
             12,
             "SELECT time, rmssd, stress_index FROM biofizic_state_live "
             "WHERE $__timeFilter(time) AND rmssd > 0 ORDER BY time",
@@ -418,7 +418,7 @@ def build_overview_dashboard() -> dict:
         ),
         timeline_panel(
             7,
-            "Data quality over time",
+            "Data quality timeline",
             "SELECT time, data_quality FROM biofizic_state_live "
             "WHERE $__timeFilter(time) ORDER BY time",
             20,
@@ -426,7 +426,7 @@ def build_overview_dashboard() -> dict:
         ),
         ts_panel(
             8,
-            "Skin temp and HR (1 Hz batch)",
+            "Skin temp & HR (1Hz raw)",
             24,
             "SELECT time, skin_temp FROM biofizic_acquisition_batch WHERE $__timeFilter(time) AND skin_temp > 0 ORDER BY time",
             extra_sql=[
@@ -440,7 +440,7 @@ def build_overview_dashboard() -> dict:
         "Biofizic Live Overview",
         ["biofizic", "overview"],
         panels,
-        version=6,
+        version=7,
         refresh="1s",
     )
 
@@ -450,7 +450,7 @@ def build_window_comparison_dashboard() -> dict:
     panels = [
         ts_panel(
             1,
-            "RMSSD per window",
+            "RMSSD per window — convergence = stable HRV",
             0,
             "SELECT time, w30_rmssd, w60_rmssd, w90_rmssd FROM biofizic_state_windows "
             "WHERE $__timeFilter(time) AND w30_rmssd > 0 ORDER BY time",
@@ -458,7 +458,7 @@ def build_window_comparison_dashboard() -> dict:
         ),
         ts_panel(
             2,
-            "Stress index per window",
+            "Stress index per window — short vs long agreement",
             8,
             "SELECT time, w30_stress_index, w60_stress_index, w90_stress_index "
             "FROM biofizic_state_windows WHERE $__timeFilter(time) ORDER BY time",
@@ -466,7 +466,7 @@ def build_window_comparison_dashboard() -> dict:
         ),
         ts_panel(
             3,
-            "IBI count per window",
+            "IBI count per window — enough beats to trust it?",
             16,
             "SELECT time, w30_ibi_count, w60_ibi_count, w90_ibi_count "
             "FROM biofizic_state_windows WHERE $__timeFilter(time) ORDER BY time",
@@ -474,7 +474,7 @@ def build_window_comparison_dashboard() -> dict:
         ),
         stat_panel(
             4,
-            "IBI buffer size",
+            "IBI buffer size (now)",
             "SELECT ibi_buffer_size AS v FROM biofizic_state_windows "
             "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             0,
@@ -484,7 +484,7 @@ def build_window_comparison_dashboard() -> dict:
         ),
         timeline_panel(
             5,
-            "Window quality (w30 / w60 / w90)",
+            "Window quality timeline (30/60/90s)",
             "SELECT time, w30_quality, w60_quality, w90_quality "
             "FROM biofizic_state_windows WHERE $__timeFilter(time) ORDER BY time",
             28,
@@ -496,7 +496,7 @@ def build_window_comparison_dashboard() -> dict:
         "Biofizic Window Comparison",
         ["biofizic", "windows"],
         panels,
-        version=1,
+        version=2,
         refresh="5s",
     )
 
@@ -516,35 +516,35 @@ def build_stream_sync_dashboard() -> dict:
     panels = [
         stat_panel(
             1,
-            "Last anchor delay (ms)",
+            "Anchor delay (now, ms) — should be >=0",
             "SELECT anchor_delay_ms AS v FROM biofizic_acquisition_batch "
             "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             0, 0, w=6, decimals=0,
         ),
         stat_panel(
             2,
-            "Last seq",
+            "Seq (now) — should increment by 1/s",
             "SELECT seq AS v FROM biofizic_acquisition_batch "
             "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             6, 0, w=6, decimals=0,
         ),
         stat_panel(
             3,
-            "Last IBI count",
+            "IBI count (last batch)",
             "SELECT ibi_count AS v FROM biofizic_acquisition_batch "
             "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             12, 0, w=6, decimals=0,
         ),
         stat_panel(
             4,
-            "Last cardiac-band energy",
+            "Cardiac-band energy (now)",
             "SELECT acc_band_cardiac AS v FROM biofizic_acquisition_batch "
             "WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1",
             18, 0, w=6, decimals=4,
         ),
         ts_panel(
             5,
-            "Atomic anchor delay (ts_anchor - ts_publish) [ms]",
+            "Anchor delay over time — stays >=0 if batch is atomic",
             4,
             "SELECT time, anchor_delay_ms FROM biofizic_acquisition_batch "
             "WHERE $__timeFilter(time) ORDER BY time",
@@ -554,7 +554,7 @@ def build_stream_sync_dashboard() -> dict:
         ),
         ts_panel(
             6,
-            "IBI count per batch (Samsung HR bursts every ~4 s)",
+            "IBI per batch — bursty Samsung HR (~every 4s)",
             11,
             "SELECT time, ibi_count FROM biofizic_acquisition_batch "
             "WHERE $__timeFilter(time) ORDER BY time",
@@ -564,7 +564,7 @@ def build_stream_sync_dashboard() -> dict:
         ),
         ts_panel(
             7,
-            "Cardiac-band motion energy per batch (0.5-4 Hz)",
+            "Cardiac-band motion per batch (0.5-4 Hz)",
             18,
             "SELECT time, acc_band_cardiac FROM biofizic_acquisition_batch "
             "WHERE $__timeFilter(time) ORDER BY time",
@@ -574,7 +574,7 @@ def build_stream_sync_dashboard() -> dict:
         ),
         ts_panel(
             8,
-            "Skin temp age at publish [ms]",
+            "Skin temp age at publish (ms) — sensor freshness",
             25,
             "SELECT time, skin_temp_age_ms FROM biofizic_acquisition_batch "
             "WHERE $__timeFilter(time) AND skin_temp_age_ms IS NOT NULL ORDER BY time",
@@ -584,7 +584,7 @@ def build_stream_sync_dashboard() -> dict:
         ),
         ts_panel(
             9,
-            "Sequence number (should increment by 1 per second)",
+            "Seq over time — +1 per second = no dropped batches",
             31,
             "SELECT time, seq FROM biofizic_acquisition_batch "
             "WHERE $__timeFilter(time) ORDER BY time",
@@ -597,7 +597,7 @@ def build_stream_sync_dashboard() -> dict:
         "Biofizic Stream Sync Diagnostics",
         ["biofizic", "diagnostics", "atomic-sync"],
         panels,
-        version=1,
+        version=2,
         refresh="5s",
     )
 
@@ -606,7 +606,7 @@ def build_session_overview_dashboard() -> dict:
     panels = [
         ts_panel(
             1,
-            "Heart rate and RMSSD",
+            "HR & RMSSD — should move inversely if valid",
             0,
             "SELECT time, mean_hr AS hr_bpm FROM biofizic_state WHERE $__timeFilter(time) AND mean_hr > 0 ORDER BY time",
             extra_sql=[
@@ -616,7 +616,7 @@ def build_session_overview_dashboard() -> dict:
         ),
         ts_panel(
             2,
-            "Stress index and z-score",
+            "Stress index & z-score — raw vs vs-your-baseline",
             7,
             "SELECT time, stress_index, z_si FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
             h=7,
@@ -624,14 +624,14 @@ def build_session_overview_dashboard() -> dict:
         ),
         timeline_panel(
             3,
-            "Motion state",
+            "Motion timeline — still vs moving",
             "SELECT time, motion_state FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
             14,
             h=4,
         ),
         ts_panel(
             4,
-            "Acceleration RMS (1 Hz batch)",
+            "Acceleration RMS — how much you moved",
             18,
             "SELECT time, acc_rms FROM biofizic_acquisition_batch WHERE $__timeFilter(time) ORDER BY time",
             h=6,
@@ -639,7 +639,7 @@ def build_session_overview_dashboard() -> dict:
         ),
         ts_panel(
             5,
-            "Arousal",
+            "Arousal (1-10) over the session",
             24,
             "SELECT time, arousal_10 FROM biofizic_state "
             "WHERE $__timeFilter(time) AND arousal_10 IS NOT NULL ORDER BY time",
@@ -649,7 +649,7 @@ def build_session_overview_dashboard() -> dict:
         ),
         ts_panel(
             6,
-            "Label agreement (Kubios vs baseline)",
+            "Label agreement — 5=Kubios & personal agree, 0=differ",
             32,
             "SELECT time, labels_agree * 5 AS labels_agree_scaled FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
             min_v=0,
@@ -659,7 +659,7 @@ def build_session_overview_dashboard() -> dict:
         ),
     ]
     return dashboard_meta(
-        "biofizic-session-overview", "Biofizic Session Overview", ["biofizic", "session"], panels, version=3
+        "biofizic-session-overview", "Biofizic Session Overview", ["biofizic", "session"], panels, version=4
     )
 
 
@@ -669,7 +669,7 @@ def build_all_data_live_dashboard() -> dict:
     panels = [
         ts_panel(
             1,
-            "Raw PPG (green) with detected peaks",
+            "Raw PPG (green) + detected peaks — clean pulse wave?",
             0,
             "SELECT time, ppg_green FROM biofizic_all_data_live "
             "WHERE $__timeFilter(time) AND ppg_green IS NOT NULL ORDER BY time",
@@ -681,7 +681,7 @@ def build_all_data_live_dashboard() -> dict:
         ),
         ts_panel(
             2,
-            "IBI: watch (SDK) vs reconstructed from PPG peaks [ms]",
+            "IBI: watch SDK vs reconstructed from PPG peaks — should match",
             9,
             "SELECT time, ibi_ms FROM biofizic_all_data_live "
             "WHERE $__timeFilter(time) AND ibi_ms IS NOT NULL ORDER BY time",
@@ -707,7 +707,7 @@ def build_all_data_live_dashboard() -> dict:
         ),
     ]
     return dashboard_meta(
-        "biofizic-all-data-live", "Biofizic ALL DATA LIVE", ["biofizic", "raw"], panels, refresh="1s"
+        "biofizic-all-data-live", "Biofizic ALL DATA LIVE", ["biofizic", "raw"], panels, version=2, refresh="1s"
     )
 
 
@@ -717,7 +717,7 @@ def build_determinist_vs_wesad_dashboard() -> dict:
     panels = [
         ts_panel(
             1,
-            "Filtered personal z (deterministic) vs WESAD P(stress)",
+            "Personal z (ours) vs WESAD P(stress) — ours is steadier",
             0,
             "SELECT time, z_si_filtered FROM biofizic_state "
             "WHERE $__timeFilter(time) ORDER BY time",
@@ -729,7 +729,7 @@ def build_determinist_vs_wesad_dashboard() -> dict:
         ),
         ts_panel(
             2,
-            "Production arousal (1-10) vs WESAD P(stress) x10",
+            "Our arousal vs WESAD P(stress)x10 — WESAD over-flags on wrist",
             8,
             "SELECT time, arousal_10 FROM biofizic_state WHERE $__timeFilter(time) ORDER BY time",
             extra_sql=[
@@ -744,6 +744,7 @@ def build_determinist_vs_wesad_dashboard() -> dict:
         "Biofizic Determinist vs WESAD",
         ["biofizic", "legacy"],
         panels,
+        version=2,
     )
 
 
@@ -753,7 +754,7 @@ def build_ppg_failure_dashboard() -> dict:
     panels = [
         ts_panel(
             1,
-            "Pulse amplitude (PPA) vs wrist acceleration",
+            "Pulse amplitude (PPA) vs accel — PPA collapses when you move",
             0,
             "SELECT time, ppa FROM biofizic_legacy_ppg "
             "WHERE $__timeFilter(time) AND ppa > 0 ORDER BY time",
@@ -765,7 +766,7 @@ def build_ppg_failure_dashboard() -> dict:
         ),
         ts_panel(
             2,
-            "PPA z-score vs cardiac-band motion energy",
+            "PPA z-score vs cardiac-band motion — inverse under motion",
             8,
             "SELECT time, ppa_z FROM biofizic_legacy_ppg WHERE $__timeFilter(time) ORDER BY time",
             extra_sql=[
@@ -776,7 +777,7 @@ def build_ppg_failure_dashboard() -> dict:
         ),
     ]
     return dashboard_meta(
-        "biofizic-ppg-failure", "Biofizic PPG Failure in the Wild", ["biofizic", "legacy"], panels
+        "biofizic-ppg-failure", "Biofizic PPG Failure in the Wild", ["biofizic", "legacy"], panels, version=2
     )
 
 
@@ -793,7 +794,7 @@ def build_valence_demo_dashboard() -> dict:
         ),
         ts_panel(
             2,
-            "Valence inputs: RMSSD z vs PPA z",
+            "Valence inputs: RMSSD z vs PPA z — noisy & inseparable",
             8,
             "SELECT time, rmssd_z FROM biofizic_legacy_valence WHERE $__timeFilter(time) ORDER BY time",
             extra_sql=[
@@ -803,7 +804,7 @@ def build_valence_demo_dashboard() -> dict:
         ),
     ]
     return dashboard_meta(
-        "biofizic-valence-demo", "Biofizic Valence Demo (negative result)", ["biofizic", "legacy"], panels
+        "biofizic-valence-demo", "Biofizic Valence Demo (negative result)", ["biofizic", "legacy"], panels, version=2
     )
 
 
@@ -813,7 +814,7 @@ def build_live_sync_dashboard() -> dict:
     panels = [
         ts_panel(
             1,
-            "Heart rate: SDK (instant) vs window mean_hr",
+            "HR: SDK instant vs window mean — same trend if aligned",
             0,
             "SELECT time, hr_sdk FROM biofizic_live WHERE $__timeFilter(time) AND hr_sdk > 0 ORDER BY time",
             extra_sql=[
@@ -823,7 +824,7 @@ def build_live_sync_dashboard() -> dict:
         ),
         ts_panel(
             2,
-            "HR (SDK) vs RMSSD — should move together (inverse) if aligned",
+            "HR vs RMSSD — inverse & time-aligned if sync is correct",
             8,
             "SELECT time, hr_sdk FROM biofizic_live WHERE $__timeFilter(time) AND hr_sdk > 0 ORDER BY time",
             extra_sql=[
@@ -832,7 +833,7 @@ def build_live_sync_dashboard() -> dict:
         ),
         ts_panel(
             3,
-            "Motion (acc_rms / cardiac-band) on the same axis",
+            "Motion (acc_rms / cardiac-band) on the same time axis",
             16,
             "SELECT time, acc_rms FROM biofizic_live WHERE $__timeFilter(time) ORDER BY time",
             extra_sql=[
@@ -842,7 +843,7 @@ def build_live_sync_dashboard() -> dict:
         ),
     ]
     return dashboard_meta(
-        "biofizic-live-sync", "Biofizic Live Sync", ["biofizic", "live"], panels, refresh="1s"
+        "biofizic-live-sync", "Biofizic Live Sync", ["biofizic", "live"], panels, version=2, refresh="1s"
     )
 
 
@@ -852,7 +853,7 @@ def build_reliability_dashboard() -> dict:
     panels = [
         ts_panel(
             1,
-            "Arousal (1-10) vs confidence Q",
+            "Arousal vs confidence Q — is the verdict trustworthy now?",
             0,
             "SELECT time, arousal_10 FROM biofizic_live WHERE $__timeFilter(time) ORDER BY time",
             extra_sql=[
@@ -862,7 +863,7 @@ def build_reliability_dashboard() -> dict:
         ),
         ts_panel(
             2,
-            "Fusion: z_hrv vs z_hr vs z_filtered (hrv_weight shows the blend)",
+            "Fusion: z_hrv vs z_hr vs z_filtered (+weight) — which channel drives it",
             8,
             "SELECT time, z_hrv FROM biofizic_live WHERE $__timeFilter(time) ORDER BY time",
             extra_sql=[
@@ -874,7 +875,7 @@ def build_reliability_dashboard() -> dict:
         ),
         ts_panel(
             3,
-            "Kalman gain & artifact rate (low gain / high artifacts => held verdict)",
+            "Kalman gain & artifacts — low gain = verdict held (ignores noise)",
             16,
             "SELECT time, kalman_gain FROM biofizic_live WHERE $__timeFilter(time) ORDER BY time",
             extra_sql=[
@@ -884,7 +885,7 @@ def build_reliability_dashboard() -> dict:
         ),
     ]
     return dashboard_meta(
-        "biofizic-reliability", "Biofizic Reliability", ["biofizic", "live"], panels, refresh="1s"
+        "biofizic-reliability", "Biofizic Reliability", ["biofizic", "live"], panels, version=2, refresh="1s"
     )
 
 

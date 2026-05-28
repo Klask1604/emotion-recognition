@@ -8,12 +8,12 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "5s",
   "panels": [
     {
       "id": 1,
-      "title": "Filtered personal z (deterministic) vs WESAD P(stress)",
+      "title": "Personal z (ours) vs WESAD P(stress) — ours is steadier",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -82,7 +82,7 @@
     },
     {
       "id": 2,
-      "title": "Production arousal (1-10) vs WESAD P(stress) x10",
+      "title": "Our arousal vs WESAD P(stress)x10 — WESAD over-flags on wrist",
       "type": "timeseries",
       "gridPos": {
         "h": 8,

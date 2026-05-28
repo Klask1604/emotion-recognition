@@ -8,12 +8,12 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "refresh": "5s",
   "panels": [
     {
       "id": 1,
-      "title": "Kubios vs baseline labels (text)",
+      "title": "Kubios vs personal labels — watch where they disagree",
       "type": "state-timeline",
       "gridPos": {
         "h": 6,
@@ -61,7 +61,7 @@
     },
     {
       "id": 2,
-      "title": "Label levels (1=Relaxat … 5=Ridicat) + agreement",
+      "title": "Label levels 1-5 + agreement — gap = population vs personal differ",
       "type": "timeseries",
       "gridPos": {
         "h": 7,
@@ -132,7 +132,7 @@
     },
     {
       "id": 3,
-      "title": "Stress index vs personal baseline",
+      "title": "Stress index now vs your resting baseline",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -201,7 +201,7 @@
     },
     {
       "id": 4,
-      "title": "Stress index z-score",
+      "title": "Stress z-score — >0 above your rest, <0 below",
       "type": "timeseries",
       "gridPos": {
         "h": 8,

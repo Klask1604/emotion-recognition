@@ -8,12 +8,12 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "5s",
   "panels": [
     {
       "id": 1,
-      "title": "Motion state",
+      "title": "Motion state (now)",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -73,7 +73,7 @@
     },
     {
       "id": 2,
-      "title": "Signal quality (Q)",
+      "title": "Signal quality Q (now) — 1=clean, 0=unusable",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -133,7 +133,7 @@
     },
     {
       "id": 3,
-      "title": "IBI artifact rate",
+      "title": "IBI artifact rate (now) — lower is better",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -193,7 +193,7 @@
     },
     {
       "id": 4,
-      "title": "Motion state over time",
+      "title": "Motion timeline — still vs moving",
       "type": "state-timeline",
       "gridPos": {
         "h": 5,
@@ -241,7 +241,7 @@
     },
     {
       "id": 5,
-      "title": "Signal quality vs artifact rate",
+      "title": "Q vs artifact rate — Q drops as artifacts rise",
       "type": "timeseries",
       "gridPos": {
         "h": 7,
@@ -312,7 +312,7 @@
     },
     {
       "id": 6,
-      "title": "Cardiac-band motion energy vs acceleration (1 Hz batch)",
+      "title": "Cardiac-band motion vs total accel — the part that corrupts PPG",
       "type": "timeseries",
       "gridPos": {
         "h": 8,

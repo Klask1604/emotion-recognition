@@ -8,12 +8,12 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "1s",
   "panels": [
     {
       "id": 1,
-      "title": "Heart rate: SDK (instant) vs window mean_hr",
+      "title": "HR: SDK instant vs window mean — same trend if aligned",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -83,7 +83,7 @@
     },
     {
       "id": 2,
-      "title": "HR (SDK) vs RMSSD — should move together (inverse) if aligned",
+      "title": "HR vs RMSSD — inverse & time-aligned if sync is correct",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -152,7 +152,7 @@
     },
     {
       "id": 3,
-      "title": "Motion (acc_rms / cardiac-band) on the same axis",
+      "title": "Motion (acc_rms / cardiac-band) on the same time axis",
       "type": "timeseries",
       "gridPos": {
         "h": 8,

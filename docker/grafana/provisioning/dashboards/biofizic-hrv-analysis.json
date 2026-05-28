@@ -8,12 +8,12 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "refresh": "5s",
   "panels": [
     {
       "id": 1,
-      "title": "RMSSD 30s",
+      "title": "RMSSD 30s (now) — higher = calmer",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -74,7 +74,7 @@
     },
     {
       "id": 2,
-      "title": "Stress index",
+      "title": "Stress index (now) — higher = more stress",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -134,7 +134,7 @@
     },
     {
       "id": 3,
-      "title": "Label Kubios",
+      "title": "Label: Kubios (population)",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -194,7 +194,7 @@
     },
     {
       "id": 4,
-      "title": "Label baseline",
+      "title": "Label: personal baseline",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -254,7 +254,7 @@
     },
     {
       "id": 5,
-      "title": "RMSSD multi-window (30/60/90 s)",
+      "title": "RMSSD 30/60/90s — short reacts fast, long is stable",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -312,7 +312,7 @@
     },
     {
       "id": 6,
-      "title": "Stress index multi-window",
+      "title": "Stress index 30/60/90s — compare window responsiveness",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -369,7 +369,7 @@
     },
     {
       "id": 7,
-      "title": "Heart rate vs RMSSD",
+      "title": "HR vs RMSSD — should move inversely if signal is valid",
       "type": "timeseries",
       "gridPos": {
         "h": 8,

@@ -3,6 +3,11 @@ paho-mqtt>=2.0.0
 numpy>=1.26.0
 influxdb-client>=1.40.0
 
+# Manual state publisher for VR testing (services/state_api.py)
+fastapi>=0.110.0
+uvicorn>=0.29.0
+pydantic>=2.0.0
+
 # Research / legacy engines (imported lazily; only needed with the
 # biofizic/legacy toggles on — see biofizic/legacy/toggles.py)
 scipy>=1.11.0          # PPG band-pass + peak detection (FAZA D), WESAD R-peaks
