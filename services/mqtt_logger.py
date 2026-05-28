@@ -114,6 +114,16 @@ FLOAT_FIELDS.update({
 
 ALL_TOPICS = list(FLOAT_FIELDS.keys()) + [
     "biofizic/acquisition/batch",
+    # Cardiac comparator (test_engine): raw PPG @100/25 Hz + derived HR/RMSSD
+    # per source. Wildcards keep the subscribe list tight while topic dispatch
+    # happens in _on_message.
+    "biofizic/test/ppg_ondemand",
+    "biofizic/test/ppg_continuous",
+    # Covers both the lightweight comparator (ppg_ondemand / ppg_continuous /
+    # hr_continuous) AND the full PPG-only PhysiologyPipeline output
+    # (ppg_only_ondemand / ppg_only_continuous). Dispatch in _on_message
+    # routes to the right handler based on the leaf topic name.
+    "biofizic/test/derived/+",
 ]
 
 # QoS 1 for low-rate epoch decisions so they survive MQTT reconnects.
@@ -146,6 +156,22 @@ SEED_MEASUREMENTS: dict[str, list[str]] = {
     "biofizic_legacy_valence": ["valence", "rmssd_z", "ppa_z"],
     "biofizic_legacy_ppg": ["n_peaks", "ppa", "ppa_z", "sample_rate_hz", "ibi_recon_mean"],
     "biofizic_all_data_live": ["ppg_green", "ppg_ir", "ibi_ms", "ppg_peak"],
+    # Cardiac comparator (test_engine + raw PPG sources). Seeded so Grafana
+    # shows "No data" instead of "table not found" before the first publish.
+    "biofizic_test_ppg_ondemand": ["green", "ir", "red"],
+    "biofizic_test_ppg_continuous": ["green", "ir", "red"],
+    "biofizic_test_derived": [
+        "hr_bpm", "rmssd_ms", "sdnn_ms", "ibi_count",
+        "peak_count", "sample_rate_hz", "artifact_rate",
+    ],
+    # Full PPG-only PhysiologyPipeline state (test_engine). Mirrors the keys
+    # mqtt_logger writes for biofizic/state/live so Grafana can overlay them.
+    "biofizic_test_ppg_only_state": [
+        "arousal_10", "stress_index", "rmssd", "mean_hr",
+        "z_si", "z_hr", "z_si_filtered", "hrv_weight",
+        "confidence", "signal_quality", "artifact_rate",
+        "kalman_gain", "ibi_count", "ibi_buffer_size",
+    ],
 }
 
 
@@ -349,6 +375,24 @@ class MqttInfluxLogger:
         dt = datetime.now(timezone.utc)
         for measurement, fields in SEED_MEASUREMENTS.items():
             point = Point(measurement).time(dt)
+            # biofizic_test_derived is tag-partitioned by source — seed one row
+            # per known source so the `source` column exists in the FlightSQL
+            # schema before the first real publish (otherwise Grafana panels
+            # that filter WHERE source = '...' fail with "no such column").
+            if measurement == "biofizic_test_derived":
+                for src in ("ppg_ondemand", "ppg_continuous", "hr_continuous"):
+                    seed = Point(measurement).time(dt).tag("source", src)
+                    for field in fields:
+                        seed.field(field, 0.0)
+                    self._write(seed)
+                continue
+            if measurement == "biofizic_test_ppg_only_state":
+                for src in ("ppg_only_ondemand", "ppg_only_continuous"):
+                    seed = Point(measurement).time(dt).tag("source", src)
+                    for field in fields:
+                        seed.field(field, 0.0)
+                    self._write(seed)
+                continue
             for field in fields:
                 point.field(field, 0.0)
             self._write(point)
@@ -421,6 +465,95 @@ class MqttInfluxLogger:
         ]
         self._write(points)
 
+    def _write_test_ppg_raw(self, measurement: str, payload: dict) -> None:
+        """Unroll one raw PPG batch (test/ppg_ondemand or test/ppg_continuous) to
+        per-sample points. Same _anchor_fn re-mapping as _write_all_data_live so
+        the watch clock skew never lands these in the past."""
+        samples = payload.get("samples")
+        if not isinstance(samples, list) or not samples:
+            return
+        ts_list = [s.get("ts") for s in samples if isinstance(s, dict)]
+        to_dt = self._anchor_fn(ts_list)
+        if to_dt is None:
+            return
+        points: list[Point] = []
+        for s in samples:
+            if not isinstance(s, dict):
+                continue
+            t = s.get("ts")
+            if not isinstance(t, (int, float)) or t <= 0:
+                continue
+            p = Point(measurement).time(to_dt(float(t)))
+            wrote = False
+            for src_field, dst_field in (("green", "green"), ("ir", "ir"), ("red", "red")):
+                v = s.get(src_field)
+                if v is None or v == "null":
+                    continue
+                try:
+                    p.field(dst_field, float(v))
+                    wrote = True
+                except (TypeError, ValueError):
+                    pass
+            if wrote:
+                points.append(p)
+        self._write(points)
+
+    def _write_test_ppg_only_state(self, payload: dict) -> None:
+        """One row per PPG-only PhysiologyPipeline tick (test_engine), tagged
+        with source so a single Grafana query can GROUP BY source and overlay
+        ppg_only_ondemand vs ppg_only_continuous against production."""
+        ts_ms = payload.get("ts")
+        if isinstance(ts_ms, (int, float)) and ts_ms > 1e12:
+            dt = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+        else:
+            dt = datetime.now(timezone.utc)
+        source = payload.get("source")
+        if not source:
+            return
+        p = Point("biofizic_test_ppg_only_state").time(dt).tag("source", str(source))
+        wrote = False
+        for f in ("arousal_10", "stress_index", "rmssd", "mean_hr",
+                  "z_si", "z_hr", "z_si_filtered", "hrv_weight",
+                  "confidence", "signal_quality", "artifact_rate",
+                  "kalman_gain", "ibi_count", "ibi_buffer_size"):
+            v = payload.get(f)
+            if v is None:
+                continue
+            try:
+                p.field(f, float(v))
+                wrote = True
+            except (TypeError, ValueError):
+                pass
+        if wrote:
+            self._write(p)
+
+    def _write_test_derived(self, payload: dict) -> None:
+        """One row per cardiac source (ppg_ondemand / ppg_continuous /
+        hr_continuous). Tag=source so a Grafana panel can GROUP BY source and
+        overlay three series in a single query."""
+        ts_ms = payload.get("ts")
+        if isinstance(ts_ms, (int, float)) and ts_ms > 1e12:
+            dt = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+        else:
+            dt = datetime.now(timezone.utc)
+        source = payload.get("source")
+        if not source:
+            return
+        p = Point("biofizic_test_derived").time(dt).tag("source", str(source))
+        wrote = False
+        for f in ("hr_bpm", "rmssd_ms", "sdnn_ms", "ibi_count", "peak_count",
+                  "sample_rate_hz", "artifact_rate"):
+            v = payload.get(f)
+            if v is None:
+                continue
+            try:
+                p.field(f, float(v))
+                wrote = True
+            except (TypeError, ValueError):
+                pass
+        if wrote:
+            self._write(p)
+
     def _on_message(self, client, userdata, msg):
         self._msgs_recv += 1
         self._last_msg_ts = time.time()
@@ -443,6 +576,18 @@ class MqttInfluxLogger:
         elif topic == "biofizic/legacy/ppg":
             # Overlay the detected PPG peaks on the raw wave dashboard.
             self._write_ppg_peaks(data)
+        elif topic == "biofizic/test/ppg_ondemand":
+            self._write_test_ppg_raw("biofizic_test_ppg_ondemand", data)
+            return
+        elif topic == "biofizic/test/ppg_continuous":
+            self._write_test_ppg_raw("biofizic_test_ppg_continuous", data)
+            return
+        elif topic.startswith("biofizic/test/derived/ppg_only_"):
+            self._write_test_ppg_only_state(data)
+            return
+        elif topic.startswith("biofizic/test/derived/"):
+            self._write_test_derived(data)
+            return
 
         # Timestamp din payload daca exista, altfel now
         ts_ms = data.get("ts") or data.get("ts_publish") or data.get("ts_anchor")

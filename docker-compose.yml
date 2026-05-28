@@ -77,6 +77,24 @@ services:
       # Use the host-trained model live; retrain + restart, no rebuild needed.
       - ./models:/app/models
 
+  # Cardiac comparator: rolls the production DSP over 3 watch sources
+  # (PPG on-demand, PPG continuous, HR continuous) and republishes derived
+  # HR/RMSSD on biofizic/test/derived/* for the Grafana comparator board.
+  # Opt-in via profile: `docker compose --profile test up -d test-engine`.
+  test-engine:
+    <<: *python-service
+    container_name: biofizic-test-engine
+    profiles: ["test"]
+    command:
+      - python
+      - services/test_engine.py
+      - --broker
+      - ${MQTT_BROKER:-localhost}
+      - --port
+      - "${MQTT_PORT:-1883}"
+    volumes:
+      - ./data:/data
+
   mqtt-logger:
     <<: *python-service
     container_name: biofizic-mqtt-logger

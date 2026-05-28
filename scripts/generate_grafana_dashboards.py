@@ -889,6 +889,193 @@ def build_reliability_dashboard() -> dict:
     )
 
 
+def build_cardiac_comparator_dashboard() -> dict:
+    """Three independent cardiac sources, same DSP, overlaid: which gives the
+    most stable HR / RMSSD? PPG on-demand @100 Hz vs PPG continuous @25 Hz vs
+    Samsung HR continuous IBI. The fourth series on each overlay is the
+    production engine for reference, so we can also see how much the choice of
+    source would shift the verdict the watch shows today."""
+    panels = [
+        # 1) Raw waveforms overlaid — same physical signal, two sample rates.
+        ts_panel(
+            1,
+            "PPG green: on-demand (100 Hz) vs continuous (25 Hz) — same wave?",
+            0,
+            "SELECT time, green AS green_ondemand FROM biofizic_test_ppg_ondemand "
+            "WHERE $__timeFilter(time) AND green IS NOT NULL ORDER BY time",
+            extra_sql=[
+                "SELECT time, green AS green_continuous FROM biofizic_test_ppg_continuous "
+                "WHERE $__timeFilter(time) AND green IS NOT NULL ORDER BY time",
+            ],
+            h=9, decimals=0,
+        ),
+        # 2) HR overlay — 3 derived sources + production for reference.
+        ts_panel(
+            2,
+            "HR (bpm): ppg_ondemand vs ppg_continuous vs hr_continuous vs production",
+            9,
+            "SELECT time, hr_bpm AS hr_ondemand FROM biofizic_test_derived "
+            "WHERE $__timeFilter(time) AND source = 'ppg_ondemand' AND hr_bpm > 0 ORDER BY time",
+            extra_sql=[
+                "SELECT time, hr_bpm AS hr_continuous FROM biofizic_test_derived "
+                "WHERE $__timeFilter(time) AND source = 'ppg_continuous' AND hr_bpm > 0 ORDER BY time",
+                "SELECT time, hr_bpm AS hr_hrtracker FROM biofizic_test_derived "
+                "WHERE $__timeFilter(time) AND source = 'hr_continuous' AND hr_bpm > 0 ORDER BY time",
+                "SELECT time, mean_hr AS hr_production FROM biofizic_state_live "
+                "WHERE $__timeFilter(time) AND mean_hr > 0 ORDER BY time",
+            ],
+            unit="none",
+        ),
+        # 3) RMSSD overlay — the metric that actually drives the stress verdict.
+        ts_panel(
+            3,
+            "RMSSD (ms): same three sources + production — accuracy thesis answer",
+            18,
+            "SELECT time, rmssd_ms AS rmssd_ondemand FROM biofizic_test_derived "
+            "WHERE $__timeFilter(time) AND source = 'ppg_ondemand' AND rmssd_ms > 0 ORDER BY time",
+            extra_sql=[
+                "SELECT time, rmssd_ms AS rmssd_continuous FROM biofizic_test_derived "
+                "WHERE $__timeFilter(time) AND source = 'ppg_continuous' AND rmssd_ms > 0 ORDER BY time",
+                "SELECT time, rmssd_ms AS rmssd_hrtracker FROM biofizic_test_derived "
+                "WHERE $__timeFilter(time) AND source = 'hr_continuous' AND rmssd_ms > 0 ORDER BY time",
+                "SELECT time, rmssd AS rmssd_production FROM biofizic_state_live "
+                "WHERE $__timeFilter(time) AND rmssd > 0 ORDER BY time",
+            ],
+            unit="ms",
+        ),
+        # 4–6) Mean HR per source over the dashboard range (eyeball comparison).
+        stat_panel(
+            4, "Mean HR — ppg_ondemand",
+            "SELECT AVG(hr_bpm) AS v FROM biofizic_test_derived "
+            "WHERE $__timeFilter(time) AND source = 'ppg_ondemand' AND hr_bpm > 0",
+            0, 27, w=8, unit="none",
+        ),
+        stat_panel(
+            5, "Mean HR — ppg_continuous",
+            "SELECT AVG(hr_bpm) AS v FROM biofizic_test_derived "
+            "WHERE $__timeFilter(time) AND source = 'ppg_continuous' AND hr_bpm > 0",
+            8, 27, w=8, unit="none",
+        ),
+        stat_panel(
+            6, "Mean HR — hr_continuous (SDK)",
+            "SELECT AVG(hr_bpm) AS v FROM biofizic_test_derived "
+            "WHERE $__timeFilter(time) AND source = 'hr_continuous' AND hr_bpm > 0",
+            16, 27, w=8, unit="none",
+        ),
+        # 7–9) Mean RMSSD per source — divergence here is the metric that matters.
+        stat_panel(
+            7, "Mean RMSSD — ppg_ondemand",
+            "SELECT AVG(rmssd_ms) AS v FROM biofizic_test_derived "
+            "WHERE $__timeFilter(time) AND source = 'ppg_ondemand' AND rmssd_ms > 0",
+            0, 31, w=8, unit="ms",
+        ),
+        stat_panel(
+            8, "Mean RMSSD — ppg_continuous",
+            "SELECT AVG(rmssd_ms) AS v FROM biofizic_test_derived "
+            "WHERE $__timeFilter(time) AND source = 'ppg_continuous' AND rmssd_ms > 0",
+            8, 31, w=8, unit="ms",
+        ),
+        stat_panel(
+            9, "Mean RMSSD — hr_continuous (SDK)",
+            "SELECT AVG(rmssd_ms) AS v FROM biofizic_test_derived "
+            "WHERE $__timeFilter(time) AND source = 'hr_continuous' AND rmssd_ms > 0",
+            16, 31, w=8, unit="ms",
+        ),
+        # 10–12) Sample rate + artifact rate per source for context (was the
+        # signal even clean enough to trust the derived values above?).
+        stat_panel(
+            10, "Sample rate Hz (ppg_ondemand)",
+            "SELECT sample_rate_hz AS v FROM biofizic_test_derived "
+            "WHERE $__timeFilter(time) AND source = 'ppg_ondemand' ORDER BY time DESC LIMIT 1",
+            0, 35, w=8, unit="none", decimals=0,
+        ),
+        stat_panel(
+            11, "Sample rate Hz (ppg_continuous)",
+            "SELECT sample_rate_hz AS v FROM biofizic_test_derived "
+            "WHERE $__timeFilter(time) AND source = 'ppg_continuous' ORDER BY time DESC LIMIT 1",
+            8, 35, w=8, unit="none", decimals=0,
+        ),
+        stat_panel(
+            12, "Artifact rate (avg over range, all sources)",
+            "SELECT AVG(artifact_rate) AS v FROM biofizic_test_derived "
+            "WHERE $__timeFilter(time)",
+            16, 35, w=8, unit="percentunit", decimals=2,
+        ),
+        # 13–15) Full PPG-only PhysiologyPipeline vs production (state/live).
+        # This is the methodological core: same decision stack, only the IBI
+        # source differs. Overlay shows whether the verdict would shift if
+        # production used PPG-derived IBI instead of Samsung's processed IBI.
+        ts_panel(
+            13,
+            "Arousal 1..10: production vs ppg_only_ondemand vs ppg_only_continuous",
+            39,
+            "SELECT time, arousal_10 AS arousal_production FROM biofizic_state_live "
+            "WHERE $__timeFilter(time) AND arousal_10 IS NOT NULL ORDER BY time",
+            extra_sql=[
+                "SELECT time, arousal_10 AS arousal_ppg_ondemand "
+                "FROM biofizic_test_ppg_only_state "
+                "WHERE $__timeFilter(time) AND source = 'ppg_only_ondemand' "
+                "AND arousal_10 IS NOT NULL ORDER BY time",
+                "SELECT time, arousal_10 AS arousal_ppg_continuous "
+                "FROM biofizic_test_ppg_only_state "
+                "WHERE $__timeFilter(time) AND source = 'ppg_only_continuous' "
+                "AND arousal_10 IS NOT NULL ORDER BY time",
+            ],
+            min_v=0, max_v=10, decimals=0, h=9,
+        ),
+        # NOTE: z_si_filtered and confidence are NOT in biofizic_state_live
+        # (only z_si is). The Kalman-filtered z and the multi-channel
+        # confidence live on biofizic/live → measurement biofizic_live,
+        # field name z_filtered (not z_si_filtered).
+        ts_panel(
+            14,
+            "z (Kalman-filtered): same Kalman, different IBI input",
+            48,
+            "SELECT time, z_filtered AS z_production FROM biofizic_live "
+            "WHERE $__timeFilter(time) AND z_filtered IS NOT NULL ORDER BY time",
+            extra_sql=[
+                "SELECT time, z_si_filtered AS z_ppg_ondemand "
+                "FROM biofizic_test_ppg_only_state "
+                "WHERE $__timeFilter(time) AND source = 'ppg_only_ondemand' "
+                "AND z_si_filtered IS NOT NULL ORDER BY time",
+                "SELECT time, z_si_filtered AS z_ppg_continuous "
+                "FROM biofizic_test_ppg_only_state "
+                "WHERE $__timeFilter(time) AND source = 'ppg_only_continuous' "
+                "AND z_si_filtered IS NOT NULL ORDER BY time",
+            ],
+            decimals=2,
+        ),
+        ts_panel(
+            15,
+            "Confidence + signal quality: how much each pipeline trusts itself",
+            56,
+            "SELECT time, confidence AS conf_production FROM biofizic_live "
+            "WHERE $__timeFilter(time) AND confidence IS NOT NULL ORDER BY time",
+            extra_sql=[
+                "SELECT time, confidence AS conf_ppg_ondemand "
+                "FROM biofizic_test_ppg_only_state "
+                "WHERE $__timeFilter(time) AND source = 'ppg_only_ondemand' "
+                "AND confidence IS NOT NULL ORDER BY time",
+                "SELECT time, confidence AS conf_ppg_continuous "
+                "FROM biofizic_test_ppg_only_state "
+                "WHERE $__timeFilter(time) AND source = 'ppg_only_continuous' "
+                "AND confidence IS NOT NULL ORDER BY time",
+                "SELECT time, signal_quality AS sq_production FROM biofizic_live "
+                "WHERE $__timeFilter(time) ORDER BY time",
+            ],
+            min_v=0, max_v=1, decimals=2,
+        ),
+    ]
+    return dashboard_meta(
+        "biofizic-cardiac-comparator",
+        "Biofizic Cardiac Comparator (PPG ond/cont vs HR cont)",
+        ["biofizic", "test", "comparator"],
+        panels,
+        version=2,
+        refresh="1s",
+    )
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     dashboards = {
@@ -905,6 +1092,7 @@ def main() -> None:
         "biofizic-determinist-vs-wesad.json": build_determinist_vs_wesad_dashboard(),
         "biofizic-ppg-failure.json": build_ppg_failure_dashboard(),
         "biofizic-valence-demo.json": build_valence_demo_dashboard(),
+        "biofizic-cardiac-comparator.json": build_cardiac_comparator_dashboard(),
     }
     for name, body in dashboards.items():
         path = OUT / name

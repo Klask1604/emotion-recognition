@@ -1,0 +1,1081 @@
+{
+  "id": null,
+  "uid": "biofizic-cardiac-comparator",
+  "title": "Biofizic Cardiac Comparator (PPG ond/cont vs HR cont)",
+  "tags": [
+    "biofizic",
+    "test",
+    "comparator"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "1s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "PPG green: on-demand (100 Hz) vs continuous (25 Hz) — same wave?",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "biofizic-influx"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, green AS green_ondemand FROM biofizic_test_ppg_ondemand WHERE $__timeFilter(time) AND green IS NOT NULL ORDER BY time",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, green AS green_continuous FROM biofizic_test_ppg_continuous WHERE $__timeFilter(time) AND green IS NOT NULL ORDER BY time",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "smooth"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "HR (bpm): ppg_ondemand vs ppg_continuous vs hr_continuous vs production",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "biofizic-influx"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, hr_bpm AS hr_ondemand FROM biofizic_test_derived WHERE $__timeFilter(time) AND source = 'ppg_ondemand' AND hr_bpm > 0 ORDER BY time",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, hr_bpm AS hr_continuous FROM biofizic_test_derived WHERE $__timeFilter(time) AND source = 'ppg_continuous' AND hr_bpm > 0 ORDER BY time",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, hr_bpm AS hr_hrtracker FROM biofizic_test_derived WHERE $__timeFilter(time) AND source = 'hr_continuous' AND hr_bpm > 0 ORDER BY time",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, mean_hr AS hr_production FROM biofizic_state_live WHERE $__timeFilter(time) AND mean_hr > 0 ORDER BY time",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "smooth"
+          },
+          "decimals": 1,
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "RMSSD (ms): same three sources + production — accuracy thesis answer",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "biofizic-influx"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, rmssd_ms AS rmssd_ondemand FROM biofizic_test_derived WHERE $__timeFilter(time) AND source = 'ppg_ondemand' AND rmssd_ms > 0 ORDER BY time",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, rmssd_ms AS rmssd_continuous FROM biofizic_test_derived WHERE $__timeFilter(time) AND source = 'ppg_continuous' AND rmssd_ms > 0 ORDER BY time",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, rmssd_ms AS rmssd_hrtracker FROM biofizic_test_derived WHERE $__timeFilter(time) AND source = 'hr_continuous' AND rmssd_ms > 0 ORDER BY time",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, rmssd AS rmssd_production FROM biofizic_state_live WHERE $__timeFilter(time) AND rmssd > 0 ORDER BY time",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "smooth"
+          },
+          "decimals": 1,
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Mean HR — ppg_ondemand",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 27
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "biofizic-influx"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT AVG(hr_bpm) AS v FROM biofizic_test_derived WHERE $__timeFilter(time) AND source = 'ppg_ondemand' AND hr_bpm > 0",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^v$/",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Mean HR — ppg_continuous",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 27
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "biofizic-influx"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT AVG(hr_bpm) AS v FROM biofizic_test_derived WHERE $__timeFilter(time) AND source = 'ppg_continuous' AND hr_bpm > 0",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^v$/",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Mean HR — hr_continuous (SDK)",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 27
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "biofizic-influx"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT AVG(hr_bpm) AS v FROM biofizic_test_derived WHERE $__timeFilter(time) AND source = 'hr_continuous' AND hr_bpm > 0",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^v$/",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Mean RMSSD — ppg_ondemand",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 31
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "biofizic-influx"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT AVG(rmssd_ms) AS v FROM biofizic_test_derived WHERE $__timeFilter(time) AND source = 'ppg_ondemand' AND rmssd_ms > 0",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^v$/",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 8,
+      "title": "Mean RMSSD — ppg_continuous",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 31
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "biofizic-influx"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT AVG(rmssd_ms) AS v FROM biofizic_test_derived WHERE $__timeFilter(time) AND source = 'ppg_continuous' AND rmssd_ms > 0",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^v$/",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 9,
+      "title": "Mean RMSSD — hr_continuous (SDK)",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 31
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "biofizic-influx"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT AVG(rmssd_ms) AS v FROM biofizic_test_derived WHERE $__timeFilter(time) AND source = 'hr_continuous' AND rmssd_ms > 0",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^v$/",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 10,
+      "title": "Sample rate Hz (ppg_ondemand)",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 35
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "biofizic-influx"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT sample_rate_hz AS v FROM biofizic_test_derived WHERE $__timeFilter(time) AND source = 'ppg_ondemand' ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^v$/",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 11,
+      "title": "Sample rate Hz (ppg_continuous)",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 35
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "biofizic-influx"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT sample_rate_hz AS v FROM biofizic_test_derived WHERE $__timeFilter(time) AND source = 'ppg_continuous' ORDER BY time DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^v$/",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 12,
+      "title": "Artifact rate (avg over range, all sources)",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 35
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "biofizic-influx"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT AVG(artifact_rate) AS v FROM biofizic_test_derived WHERE $__timeFilter(time)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^v$/",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 13,
+      "title": "Arousal 1..10: production vs ppg_only_ondemand vs ppg_only_continuous",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 39
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "biofizic-influx"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, arousal_10 AS arousal_production FROM biofizic_state_live WHERE $__timeFilter(time) AND arousal_10 IS NOT NULL ORDER BY time",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, arousal_10 AS arousal_ppg_ondemand FROM biofizic_test_ppg_only_state WHERE $__timeFilter(time) AND source = 'ppg_only_ondemand' AND arousal_10 IS NOT NULL ORDER BY time",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, arousal_10 AS arousal_ppg_continuous FROM biofizic_test_ppg_only_state WHERE $__timeFilter(time) AND source = 'ppg_only_continuous' AND arousal_10 IS NOT NULL ORDER BY time",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "smooth"
+          },
+          "decimals": 0,
+          "min": 0,
+          "max": 10
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "title": "z (Kalman-filtered): same Kalman, different IBI input",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 48
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "biofizic-influx"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, z_filtered AS z_production FROM biofizic_live WHERE $__timeFilter(time) AND z_filtered IS NOT NULL ORDER BY time",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, z_si_filtered AS z_ppg_ondemand FROM biofizic_test_ppg_only_state WHERE $__timeFilter(time) AND source = 'ppg_only_ondemand' AND z_si_filtered IS NOT NULL ORDER BY time",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, z_si_filtered AS z_ppg_continuous FROM biofizic_test_ppg_only_state WHERE $__timeFilter(time) AND source = 'ppg_only_continuous' AND z_si_filtered IS NOT NULL ORDER BY time",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "smooth"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "title": "Confidence + signal quality: how much each pipeline trusts itself",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 56
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "biofizic-influx"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, confidence AS conf_production FROM biofizic_live WHERE $__timeFilter(time) AND confidence IS NOT NULL ORDER BY time",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, confidence AS conf_ppg_ondemand FROM biofizic_test_ppg_only_state WHERE $__timeFilter(time) AND source = 'ppg_only_ondemand' AND confidence IS NOT NULL ORDER BY time",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, confidence AS conf_ppg_continuous FROM biofizic_test_ppg_only_state WHERE $__timeFilter(time) AND source = 'ppg_only_continuous' AND confidence IS NOT NULL ORDER BY time",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "biofizic-influx"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, signal_quality AS sq_production FROM biofizic_live WHERE $__timeFilter(time) ORDER BY time",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "smooth"
+          },
+          "decimals": 2,
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    }
+  ]
+}
