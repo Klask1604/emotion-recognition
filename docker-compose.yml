@@ -59,6 +59,10 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      # InfluxDB datasource URL: unset on the server (-> internal influxdb:8181),
+      # set to the server's public URL on a laptop so local Grafana reads the
+      # real data. Read by provisioning/datasources/influxdb.yml.
+      INFLUX_URL: ${INFLUX_URL:-http://influxdb:8181}
     volumes:
       - grafana-data:/var/lib/grafana
       - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro

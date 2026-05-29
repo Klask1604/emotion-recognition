@@ -5,7 +5,11 @@ datasources:
     uid: biofizic-influx
     type: influxdb
     access: proxy
-    url: http://influxdb:8181
+    # Single source of truth: the server's InfluxDB. On the server, leave
+    # INFLUX_URL unset so Grafana uses the fast internal container address. On a
+    # laptop, set INFLUX_URL=http://paxbespoke.automateflow.ro:8181 in .env to
+    # point local Grafana at the real data — no local InfluxDB needed.
+    url: ${INFLUX_URL:-http://influxdb:8181}
     isDefault: true
     jsonData:
       version: SQL
