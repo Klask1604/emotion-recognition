@@ -31,44 +31,30 @@
           "format": "table",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT l.arousal_10 AS arousal, v.valence AS valence FROM biofizic_live l JOIN biofizic_legacy_valence v ON l.time = v.time WHERE l.arousal_10 IS NOT NULL AND $__timeFilter(l.time)",
+          "rawSql": "SELECT CAST(l.arousal_10 AS DOUBLE) AS arousal, v.valence AS valence FROM biofizic_live l JOIN biofizic_legacy_valence v ON l.time = v.time WHERE l.arousal_10 IS NOT NULL AND $__timeFilter(l.time)",
           "refId": "A"
         }
       ],
       "options": {
-        "mapping": "manual",
-        "series": [
-          {
-            "x": { "matcher": { "id": "byName", "options": "arousal" } },
-            "y": { "matcher": { "id": "byName", "options": "valence" } },
-            "pointSize": { "fixed": 4 },
-            "pointColor": { "fixed": "#3274D9" }
-          }
-        ]
+        "mapping": "auto",
+        "seriesMapping": "auto",
+        "tooltip": { "mode": "single" },
+        "legend": { "showLegend": false }
       },
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "pointSize": 4,
-            "axisLabel": "",
-            "scaleDistribution": { "type": "linear" }
+            "show": "points",
+            "pointSize": { "fixed": 4 },
+            "axisGridShow": true
           }
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "arousal" },
-            "properties": [
-              { "id": "min", "value": 1 },
-              { "id": "max", "value": 10 },
-              { "id": "custom.axisLabel", "value": "AROUSAL (low <-- 5 --> high)" }
-            ]
-          },
-          {
             "matcher": { "id": "byName", "options": "valence" },
             "properties": [
               { "id": "min", "value": -1 },
-              { "id": "max", "value": 1 },
-              { "id": "custom.axisLabel", "value": "VALENCE proxy (neg <-- 0 --> pos)" }
+              { "id": "max", "value": 1 }
             ]
           }
         ]
