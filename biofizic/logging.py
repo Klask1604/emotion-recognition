@@ -68,7 +68,33 @@ def format_window_line(multi: MultiWindowHrvResult | None) -> str:
             parts.append(f"{name} rmssd={metrics.rmssd_ms:.0f}")
         else:
             parts.append(f"{name} --")
-    return "[WINDOW] " + " | ".join(parts) + "   (w30 decides; w60/w90 diagnostic)"
+    return "[WINDOW] " + " | ".join(parts) + "   (w60 decides; w30/w90 diagnostic)"
+
+
+def format_ibi_breakdown(multi: MultiWindowHrvResult | None) -> str:
+    """Per-window IBI counts + artifact rates so the user can see exactly
+    where beats are getting rejected. Beats received  → kept after the
+    artifact filter; the ratio is the published artifact_rate."""
+    if multi is None:
+        return "[IBI] no_data"
+    parts = []
+    for name, metrics in (
+        ("w30", multi.window_30_seconds),
+        ("w60", multi.window_60_seconds),
+        ("w90", multi.window_90_seconds),
+    ):
+        if metrics:
+            kept = metrics.beat_count
+            rejected_pct = metrics.artifact_rate * 100
+            # received ≈ kept / (1 - artifact_rate); avoid div-by-zero.
+            received = (
+                kept / (1.0 - metrics.artifact_rate)
+                if metrics.artifact_rate < 0.999 else kept
+            )
+            parts.append(f"{name} in={received:.0f} kept={kept} art={rejected_pct:.0f}%")
+        else:
+            parts.append(f"{name} --")
+    return "[IBI] " + " | ".join(parts)
 
 
 def format_decision_block(decision: PhysiologyDecision) -> str:
@@ -77,6 +103,7 @@ def format_decision_block(decision: PhysiologyDecision) -> str:
         *format_baseline_block(decision),
         *format_quality_block(decision),
         format_window_line(decision.multi_window),
+        format_ibi_breakdown(decision.multi_window),
     ]
     # Trailing newline => one blank line between consecutive blocks.
     return "\n".join(lines) + "\n"

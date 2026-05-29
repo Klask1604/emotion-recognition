@@ -116,7 +116,16 @@ class PhysiologyPipeline:
         w60 = self._window_result_from_metrics(multi.window_60_seconds)
         w90 = self._window_result_from_metrics(multi.window_90_seconds)
 
-        primary = multi.window_30_seconds
+        # Decision now runs on w60 instead of w30: empirically the w30 RMSSD
+        # has ~1.8x the std-dev and unrealistic single-beat spikes (max 159
+        # ms on quiet wear-time vs 104 ms on w90). w60 covers a full
+        # respiratory cycle so RSA averages out, and one bad beat contributes
+        # only 1/(78 beats) ~ 1.3% instead of 1/40 ~ 2.5%. We fall back to
+        # w30 when w60 isn't yet computable (first 60 s of recording).
+        primary = multi.window_60_seconds or multi.window_30_seconds
+        primary_window_label = (
+            "w60" if multi.window_60_seconds is not None else "w30"
+        )
 
         # Motion energy over the same window (cardiac-band acc reported by the
         # watch, median over the buffer); artifact rate from the primary window.
@@ -153,8 +162,10 @@ class PhysiologyPipeline:
             )
 
         decision = None
+        # Gate on the primary window (w60 when available, w30 fallback).
+        primary_window_result = w60 if primary is multi.window_60_seconds else w30
         if (
-            w30.quality != "unavailable"
+            primary_window_result.quality != "unavailable"
             and primary is not None
             and primary.beat_count >= MIN_BEATS_FOR_ANY_HRV
         ):
@@ -175,13 +186,16 @@ class PhysiologyPipeline:
                     log.warning("decision log formatting failed: %s", exc)
 
         self.state.last_decision_at = now_ts
+        # Expose the actual primary window in `best` so dashboards and the
+        # watch payload don't lie about which window drove the verdict.
+        best = primary_window_result
         return MultiWindowResult(
             ts=now_ts,
             w30=w30,
             w60=w60,
             w90=w90,
-            best=w30,
-            best_window_label="w30",
+            best=best,
+            best_window_label=primary_window_label,
             decision=decision,
             ibi_buffer_size=buf_size,
             motion_state=quality.motion_state,
