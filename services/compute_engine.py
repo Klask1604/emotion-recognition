@@ -311,12 +311,17 @@ class ComputeEngineService:
         """Publish the parallel research engines on biofizic/legacy/* (never VR)."""
         out = self.legacy.run(batch=batch, result=result, baseline=self.pipeline.baseline)
         ts = self._anchor_ms
+        log.debug("legacy out: ppg=%s wesad=%s valence=%s resp=%s",
+                  out.ppg is not None, out.wesad is not None,
+                  out.valence is not None, out.respiration)
         if out.ppg is not None:
             client.publish("biofizic/legacy/ppg", json.dumps({"ts": ts, **out.ppg}), qos=0)
         if out.wesad is not None:
             client.publish("biofizic/legacy/wesad", json.dumps({"ts": ts, **out.wesad}), qos=0)
         if out.valence is not None:
             client.publish("biofizic/legacy/valence", json.dumps({"ts": ts, **out.valence}), qos=0)
+        if out.respiration is not None:
+            client.publish("biofizic/legacy/resp", json.dumps({"ts": ts, **out.respiration}), qos=0)
 
     @staticmethod
     def _window_payload(window: WindowResult) -> dict:
@@ -393,7 +398,11 @@ class ComputeEngineService:
             "window_sec": window_sec,
         }
         if result is not None:
-            payload["window_used"] = "w30"
+            # Report the window that ACTUALLY drove the verdict (w60 normally,
+            # w30 only during the first 60 s before w60 is computable), not a
+            # hardcoded label — the windows dashboard must not misattribute the
+            # decision to w30.
+            payload["window_used"] = result.best_window_label
             payload["data_quality"] = result.best.quality
             payload["ibi_buffer_size"] = result.ibi_buffer_size
         if multi:
@@ -423,7 +432,7 @@ class ComputeEngineService:
                 "ts": self._anchor_ms,
                 "live": True,
                 "engine": "compute",
-                "window_used": "w30",
+                "window_used": result.best_window_label,
                 "data_quality": result.best.quality,
                 "ibi_buffer_size": result.ibi_buffer_size,
                 "motion_state": result.motion_state,

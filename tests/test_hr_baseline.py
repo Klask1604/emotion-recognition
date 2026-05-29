@@ -7,13 +7,13 @@ from pathlib import Path
 import pytest
 
 from biofizic.engine.baseline import RestBaselineStore
-from biofizic.config import BASELINE_MIN_REST_EPOCHS
+from biofizic.config import BASELINE_MIN_REST_SAMPLES
 
 
 @pytest.fixture
 def store(tmp_path: Path) -> RestBaselineStore:
     s = RestBaselineStore(path=tmp_path / "rest_baseline.json")
-    for _ in range(BASELINE_MIN_REST_EPOCHS):
+    for _ in range(BASELINE_MIN_REST_SAMPLES):
         s.observe_resting(rmssd_ms=45.0, kubios_stress_index=10.0, heart_rate_bpm=65.0)
     return s
 
@@ -36,7 +36,7 @@ def test_hr_z_positive_when_elevated(store: RestBaselineStore):
 def test_hr_baseline_persists(tmp_path: Path):
     p = tmp_path / "rest_baseline.json"
     s = RestBaselineStore(path=p)
-    for _ in range(BASELINE_MIN_REST_EPOCHS):
+    for _ in range(BASELINE_MIN_REST_SAMPLES):
         s.observe_resting(rmssd_ms=50.0, kubios_stress_index=12.0, heart_rate_bpm=70.0)
     reloaded = RestBaselineStore(path=p)
     assert reloaded.baseline_heart_rate_bpm == pytest.approx(s.baseline_heart_rate_bpm)

@@ -20,9 +20,15 @@ class LegacyOutputs:
     ppg: dict | None = None       # detected peaks, PPA, reconstructed IBI
     wesad: dict | None = None     # {"p_stress": float}
     valence: dict | None = None   # {"valence": float, "ppa_z": float}
+    respiration: dict | None = None  # {"rsa_bpm", "ppg_bpm", confidences, ...}
 
     def is_empty(self) -> bool:
-        return self.ppg is None and self.wesad is None and self.valence is None
+        return (
+            self.ppg is None
+            and self.wesad is None
+            and self.valence is None
+            and self.respiration is None
+        )
 
 
 class LegacyEngines:
@@ -32,6 +38,11 @@ class LegacyEngines:
         self._ppg = None
         self._wesad = None
         self._valence = None
+        self._respiration = None
+        if toggles.ENABLE_RESPIRATION_COMPARE:
+            from biofizic.legacy.respiration_compare import RespirationCompareEngine
+
+            self._respiration = RespirationCompareEngine()
 
         if toggles.ENABLE_RAW_PPG or toggles.ENABLE_PPG_PEAKS or toggles.ENABLE_VALENCE:
             from biofizic.legacy.raw_ppg import RawPpgEngine
@@ -56,7 +67,7 @@ class LegacyEngines:
 
     @property
     def active(self) -> bool:
-        return any((self._ppg, self._wesad, self._valence))
+        return any((self._ppg, self._wesad, self._valence, self._respiration))
 
     def run(self, *, batch, result, baseline) -> LegacyOutputs:
         """Run the enabled engines for one epoch. `batch` is the parsed
@@ -80,4 +91,11 @@ class LegacyEngines:
             rmssd_z = baseline.rmssd_z_score(decision.rmssd_ms) if baseline.is_ready else 0.0
             valence_out = self._valence.compute(rmssd_z=rmssd_z, ppa_z=ppa_z)
 
-        return LegacyOutputs(ppg=ppg_out, wesad=wesad_out, valence=valence_out)
+        respiration_out = None
+        if self._respiration is not None:
+            respiration_out = self._respiration.compute(batch)
+
+        return LegacyOutputs(
+            ppg=ppg_out, wesad=wesad_out, valence=valence_out,
+            respiration=respiration_out,
+        )

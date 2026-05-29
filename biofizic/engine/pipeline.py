@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass
 
 from biofizic.engine.baseline import RestBaselineStore
+from biofizic.engine.channels.temperature import SkinTemperatureChannelState
 from biofizic.engine.decision import DecisionState, decide
 from biofizic.engine.signal_quality import SignalQualityState, update_and_score
 from biofizic.logging import format_decision_block
@@ -58,6 +59,10 @@ class PhysiologyPipeline:
         self.motion_buffer = RollingSensorBuffer()
         self.multi_window = MultiWindowProcessor()
         self.baseline = RestBaselineStore()
+        # Skin-temperature arousal channel: persisted in its own file so it
+        # never touches rest_baseline.json. Resting samples feed it on the same
+        # quality gate as the HRV baseline.
+        self.temperature = SkinTemperatureChannelState(persist=True)
         self.quality_state = SignalQualityState()
         self.decision_state = DecisionState()
         self.state = PipelineState()
@@ -158,8 +163,19 @@ class PhysiologyPipeline:
             and primary.beat_count >= MIN_BEATS_FOR_ANY_HRV
         ):
             self.baseline.observe_resting(
-                primary.rmssd_ms, primary.kubios_stress_index, heart_rate_bpm=sdk_hr
+                primary.rmssd_ms,
+                primary.kubios_stress_index,
+                heart_rate_bpm=sdk_hr,
+                now=now_ts,
             )
+            # Feed the temperature baseline on the SAME resting gate, so its
+            # personal reference is built from the same quiet epochs.
+            if sensor is not None and sensor.skin_temperature_c > 0:
+                self.temperature.observe_resting(
+                    sensor.skin_temperature_c,
+                    sensor.ambient_temperature_c,
+                    now=now_ts,
+                )
 
         decision = None
         # Gate on the primary window (w60 when available, w30 fallback).
@@ -175,6 +191,7 @@ class PhysiologyPipeline:
                 sensor=sensor,
                 quality=quality,
                 baseline=self.baseline,
+                temperature=self.temperature,
                 state=self.decision_state,
                 publish_epoch=publish_epoch,
             )
@@ -206,4 +223,5 @@ class PhysiologyPipeline:
 
     def reset_baseline(self, reported_arousal: float | None = None) -> None:
         self.baseline.reset_for_recalibration(reported_arousal)
+        self.temperature.reset()
         self.decision_state.reset()

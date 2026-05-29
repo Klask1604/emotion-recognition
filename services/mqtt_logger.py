@@ -111,6 +111,13 @@ FLOAT_FIELDS.update({
     "biofizic/legacy/wesad": ["p_stress"],
     "biofizic/legacy/valence": ["valence", "rmssd_z", "ppa_z"],
     "biofizic/legacy/ppg": ["n_peaks", "ppa", "ppa_z", "sample_rate_hz", "ibi_recon_mean"],
+    # Respiration comparator: RSA-from-IBI vs PPG-amplitude, side by side, plus
+    # the agreement when both are confident (see legacy/respiration_compare).
+    "biofizic/legacy/resp": [
+        "rsa_bpm", "rsa_conf", "rsa_prom",
+        "ppg_bpm", "ppg_conf", "ppg_prom",
+        "agree_bpm_diff",
+    ],
 })
 
 ALL_TOPICS = list(FLOAT_FIELDS.keys()) + [
@@ -156,6 +163,10 @@ SEED_MEASUREMENTS: dict[str, list[str]] = {
     "biofizic_legacy_wesad": ["p_stress"],
     "biofizic_legacy_valence": ["valence", "rmssd_z", "ppa_z"],
     "biofizic_legacy_ppg": ["n_peaks", "ppa", "ppa_z", "sample_rate_hz", "ibi_recon_mean"],
+    "biofizic_legacy_resp": [
+        "rsa_bpm", "rsa_conf", "rsa_prom",
+        "ppg_bpm", "ppg_conf", "ppg_prom", "agree_bpm_diff",
+    ],
     "biofizic_all_data_live": ["ppg_green", "ppg_ir", "ibi_ms", "ppg_peak"],
     # Cardiac comparator (test_engine + raw PPG sources). Seeded so Grafana
     # shows "No data" instead of "table not found" before the first publish.

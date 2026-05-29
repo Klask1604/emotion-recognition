@@ -70,14 +70,18 @@ PPG_PPA_BASELINE_WINDOW = 60
 
 
 # ---------------------------------------------------------------------------
-# Analysis windows (LITERATURE for w30; w60/w90 EMPIRICAL validation)
+# Analysis windows (w60 primary EMPIRICAL; w30/w90 diagnostic)
 # ---------------------------------------------------------------------------
 
-# w30 drives every published decision. w60 and w90 are computed in parallel
-# and surfaced only on biofizic/state/windows so the thesis can compare and
-# justify why w30 is the right primary window for wrist HRV.
+# w60 drives the published decision: empirically the w30 RMSSD has ~1.8x the
+# std-dev and unrealistic single-beat spikes on quiet wear-time, while w60
+# covers a full respiratory cycle so RSA averages out and one bad beat
+# contributes ~1/78 beats instead of ~1/40. w30 and w90 are computed in
+# parallel and surfaced on biofizic/state/windows so the thesis can show this
+# side by side. The pipeline falls back to w30 only for the first 60 s of a
+# recording, before w60 is computable (see engine/pipeline.py).
 ANALYSIS_WINDOW_SECONDS = (30, 60, 90)
-PRIMARY_DECISION_WINDOW_SECONDS = 30
+PRIMARY_DECISION_WINDOW_SECONDS = 60
 
 # Lookback used when slicing the IBI buffer for the multi-window HRV pass:
 # the longest analysis window, so every window has the data it needs.
@@ -166,16 +170,77 @@ MOTION_MOVING_QUALITY_FACTOR = 0.1
 # (Hampel). z = (ln x - median) / sigma. This replaces the earlier fixed 15%
 # scale, which was not a statistic.
 #
-# Lock after this many resting epochs (~6 min at 30 s); fewer is too noisy for
-# a stable MAD. The estimate then slides over a rolling window of resting
-# epochs, which adapts to circadian drift without an EMA fudge factor.
-BASELINE_MIN_REST_EPOCHS = 12
+# DECORRELATION: observe_resting() is driven by the ~1 Hz batch loop, but the
+# HRV window is 60 s, so two observations 1 s apart share ~98% of their beats —
+# they are NOT independent. Collecting 12 such samples gave a near-zero MAD and
+# a hypersensitive z (the floor below was masking it). We therefore space
+# resting observations at least BASELINE_OBSERVATION_INTERVAL_S apart, so the
+# locked baseline is built from less-correlated samples.
+#
+# Lock after this many SPACED resting samples. At 3 s spacing, 8 samples ≈ 24 s
+# of holding still — short enough that a user actually completes it, while the
+# spacing keeps the MAD meaningful. (Renamed from the old *_EPOCHS name, which
+# wrongly implied 30 s epochs / a ~6 min lock; the loop was always ~1 Hz.)
+BASELINE_MIN_REST_SAMPLES = 8
+BASELINE_OBSERVATION_INTERVAL_S = 3.0
 BASELINE_ROBUST_WINDOW_EPOCHS = 60
 # Numerical floor on the log-space sigma (~5% multiplicative) so z is finite
 # when a subject's resting HRV is unusually stable. INFRA, not physiological.
 BASELINE_LOG_SIGMA_FLOOR = 0.05
 # Clip the reported z-score; |z| > 4 is past the usable range of the CDF map.
 Z_SCORE_CLIP = 4.0
+
+
+# ---------------------------------------------------------------------------
+# Skin-temperature arousal channel (EMPIRICAL — see engine/channels/temperature)
+# ---------------------------------------------------------------------------
+
+# Peripheral skin temperature is modelled in LINEAR space (°C is not a positive
+# multiplicative quantity like RMSSD, so no log transform): robust personal
+# baseline (median + MAD), z = (median - temp)/sigma, SIGN INVERTED so a drop
+# below baseline (sympathetic vasoconstriction) reads as positive arousal.
+#
+# Lock parameters mirror the HRV baseline (resting-epoch gated). Temperature is
+# slow, so the same ~6 min lock is comfortable.
+TEMP_BASELINE_MIN_REST_EPOCHS = 12
+TEMP_BASELINE_ROBUST_WINDOW_EPOCHS = 60
+# Robust sigma floor (°C). Resting wrist skin temperature is stable to a few
+# tenths of a degree; 0.15 °C keeps z finite without making it hypersensitive.
+TEMP_SIGMA_FLOOR_C = 0.15
+# Ambient-drift quality gate: a skin-temperature change under shifting ambient
+# temperature is thermoregulation, not arousal. Channel confidence decays
+# linearly from 1 (no drift) to 0 once ambient has drifted this many °C from its
+# own resting baseline. 3 °C is a deliberately generous indoor/VR-room band.
+TEMP_AMBIENT_DRIFT_C_FULL_PENALTY = 3.0
+
+# Conservative cap on the temperature channel's fusion weight. Skin temperature
+# is a slow, secondary arousal proxy (vasoconstriction lags HR/HRV by tens of
+# seconds), so it should nudge — never dominate — the HR/HRV verdict. The
+# channel enters the weighted-mean fusion with weight = confidence · this cap.
+# Start small and revisit once we have live data; documented EMPIRICAL, not a
+# physiological constant. Set to 0 to disable the channel without code changes.
+TEMP_CHANNEL_MAX_WEIGHT = 0.25
+
+
+# ---------------------------------------------------------------------------
+# Respiration estimators (RESEARCH — engine/channels/respiration_*; not fused yet)
+# ---------------------------------------------------------------------------
+
+# RSA-from-IBI breathing-rate estimator search band. Widened below the classic
+# 0.15 Hz lower edge so slow breathers (< 9 br/min) are not missed outright;
+# the confidence gate below handles the Mayer-wave ambiguity that this widening
+# introduces. 0.40 Hz upper edge = 24 br/min.
+RSA_BAND_LO_HZ = 0.10
+RSA_BAND_HI_HZ = 0.40
+# Below this frequency a spectral peak is more likely a Mayer/baroreflex wave
+# (~0.1 Hz) than breathing, so confidence fades to 0 as the peak approaches it.
+RSA_SLOW_EDGE_HZ = 0.15
+# Minimum peak-to-median band power ratio before a peak is trusted at all.
+RSA_MIN_PEAK_PROMINENCE_RATIO = 3.0
+# Minimum beats before an RSA spectrum is even attempted (need enough cycles).
+RSA_MIN_BEATS = 20
+# Minimum detected PPG beats before the amplitude-modulation estimator runs.
+RESP_PPG_MIN_BEATS = 20
 
 # Scalar Kalman smoother on the personal stress z (engine/state_estimator.py).
 # The latent autonomic state drifts slowly between 30 s epochs (small process
@@ -299,3 +364,9 @@ def data_dir() -> Path:
 
 def rest_baseline_path() -> Path:
     return data_dir() / "rest_baseline.json"
+
+
+def temp_baseline_path() -> Path:
+    """Skin-temperature channel baseline, kept separate from the HRV baseline
+    file so adding the channel never risks the existing rest_baseline.json."""
+    return data_dir() / "temp_baseline.json"

@@ -1,0 +1,203 @@
+{
+  "id": null,
+  "uid": "biofizic-respiration-compare",
+  "title": "Biofizic Respiration Compare (RSA vs PPG-amplitude)",
+  "tags": [
+    "biofizic",
+    "legacy"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Breathing rate (br/min): RSA-from-IBI vs PPG-amplitude",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, rsa_bpm FROM biofizic_legacy_resp WHERE $__timeFilter(time) AND rsa_bpm > 0 ORDER BY time",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, ppg_bpm FROM biofizic_legacy_resp WHERE $__timeFilter(time) AND ppg_bpm > 0 ORDER BY time",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 5,
+            "lineWidth": 1,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "none",
+          "decimals": 1,
+          "min": 0,
+          "max": 30
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Channel confidence [0,1] — when each source is trustworthy (0 = rejected by quality gate)",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, rsa_conf FROM biofizic_legacy_resp WHERE $__timeFilter(time) ORDER BY time",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, ppg_conf FROM biofizic_legacy_resp WHERE $__timeFilter(time) ORDER BY time",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "stepAfter"
+          },
+          "decimals": 3,
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Spectral peak prominence (peak/median) — gate threshold = 3.0",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, rsa_prom FROM biofizic_legacy_resp WHERE $__timeFilter(time) ORDER BY time",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, ppg_prom FROM biofizic_legacy_resp WHERE $__timeFilter(time) ORDER BY time",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "showPoints": "never",
+            "spanNulls": true,
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "decimals": 2,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 3.0 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Agreement |RSA - PPG| (br/min) when both confident",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, agree_bpm_diff FROM biofizic_legacy_resp WHERE $__timeFilter(time) AND agree_bpm_diff IS NOT NULL ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 6,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "none",
+          "decimals": 1,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      }
+    }
+  ]
+}

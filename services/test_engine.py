@@ -92,6 +92,7 @@ class InMemoryBaselineStore(RestBaselineStore):
         self._ln_hr: deque[float] = _deque(maxlen=BASELINE_ROBUST_WINDOW_EPOCHS)
         self.is_ready = False
         self.rest_observation_count = 0
+        self._last_observation_s = None
         self.reported_baseline_arousal = 0.5
 
     def _load(self) -> None:  # pragma: no cover - never called, init bypassed

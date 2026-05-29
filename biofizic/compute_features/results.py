@@ -119,7 +119,7 @@ class MultiWindowResult:
     w60: WindowResult
     w90: WindowResult
     best: WindowResult
-    best_window_label: str  # always "w30" (decision); w60/w90 are diagnostic only
+    best_window_label: str  # window that drove the decision: "w60" normally, "w30" only during the first 60 s
     decision: PhysiologyDecision | None
     ibi_buffer_size: int
     motion_state: str

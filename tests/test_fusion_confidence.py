@@ -14,7 +14,7 @@ import pytest
 
 from biofizic.compute_features.results import HrvMetrics, MultiWindowHrvResult
 from biofizic.config import (
-    BASELINE_MIN_REST_EPOCHS,
+    BASELINE_MIN_REST_SAMPLES,
     HR_CHANNEL_CONFIDENCE,
 )
 from biofizic.engine.decision import DecisionState, decide

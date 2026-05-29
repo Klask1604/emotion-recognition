@@ -9,7 +9,7 @@ fixed 15%-of-baseline scale, which was not a statistic.
 
 Rules:
   1. Collect resting epochs (quality-gated by the caller) into a rolling window.
-  2. Lock after BASELINE_MIN_REST_EPOCHS; the estimate then slides over the
+  2. Lock after BASELINE_MIN_REST_SAMPLES spaced samples; the estimate slides over the
      last BASELINE_ROBUST_WINDOW_EPOCHS, adapting to circadian drift without an
      EMA fudge factor.
   3. Never reset on motion. Reset only via explicit recalibrate command.
@@ -26,7 +26,8 @@ from pathlib import Path
 
 from biofizic.config import (
     BASELINE_LOG_SIGMA_FLOOR,
-    BASELINE_MIN_REST_EPOCHS,
+    BASELINE_MIN_REST_SAMPLES,
+    BASELINE_OBSERVATION_INTERVAL_S,
     BASELINE_ROBUST_WINDOW_EPOCHS,
     Z_SCORE_CLIP,
     rest_baseline_path,
@@ -62,24 +63,44 @@ class RestBaselineStore:
         self._ln_hr: deque[float] = deque(maxlen=BASELINE_ROBUST_WINDOW_EPOCHS)
         self.is_ready = False
         self.rest_observation_count = 0
+        # Wall-clock (s) of the last accepted resting sample, for the spacing
+        # gate. Not persisted: spacing only matters within a calibration run.
+        self._last_observation_s: float | None = None
         # Self-reported arousal at the last calibration (0..1). Sets where the
         # baseline sits on the arousal scale; 0.5 = neutral if never reported.
         self.reported_baseline_arousal = 0.5
         self._load()
 
     def observe_resting(
-        self, rmssd_ms: float, kubios_stress_index: float, heart_rate_bpm: float = 0.0
+        self,
+        rmssd_ms: float,
+        kubios_stress_index: float,
+        heart_rate_bpm: float = 0.0,
+        *,
+        now: float | None = None,
     ) -> None:
-        """Add a resting epoch. The caller decides what counts as resting
-        (signal-quality gate: low motion energy and low artifact rate)."""
+        """Add a resting sample. The caller decides what counts as resting
+        (signal-quality gate: low motion energy and low artifact rate).
+
+        Samples are accepted at most once per BASELINE_OBSERVATION_INTERVAL_S so
+        the locked baseline is built from less-correlated points: the 60 s HRV
+        window means consecutive ~1 Hz calls share almost all their beats, which
+        collapses the MAD and makes the personal z hypersensitive. `now` is the
+        wall-clock in seconds; when omitted the spacing gate is disabled (kept
+        for tests that drive the store directly)."""
         if rmssd_ms <= 0 or kubios_stress_index <= 0:
             return
+        if now is not None and self._last_observation_s is not None:
+            if now - self._last_observation_s < BASELINE_OBSERVATION_INTERVAL_S:
+                return  # too soon after the previous sample — skip (decorrelate)
+        if now is not None:
+            self._last_observation_s = now
         self.rest_observation_count += 1
         self._ln_rmssd.append(math.log(rmssd_ms))
         self._ln_si.append(math.log(kubios_stress_index))
         if heart_rate_bpm > 0:
             self._ln_hr.append(math.log(heart_rate_bpm))
-        if not self.is_ready and len(self._ln_si) >= BASELINE_MIN_REST_EPOCHS:
+        if not self.is_ready and len(self._ln_si) >= BASELINE_MIN_REST_SAMPLES:
             self.is_ready = True
             log.info(
                 "Baseline locked: stress_index=%.2f rmssd=%.1f (n=%d)",
@@ -93,6 +114,7 @@ class RestBaselineStore:
         """Only call from biofizic/cmd/calibrate. `reported_arousal` (0..1) is the
         user's self-reported state, anchoring where this baseline sits on the
         arousal scale."""
+        self._last_observation_s = None
         self._ln_rmssd.clear()
         self._ln_si.clear()
         self._ln_hr.clear()

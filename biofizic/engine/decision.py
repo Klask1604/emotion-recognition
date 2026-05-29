@@ -41,6 +41,7 @@ from biofizic.config import (
     KALMAN_PROCESS_VAR,
     KALMAN_QUALITY_FLOOR,
     PRELIMINARY_CONFIDENCE_CAP,
+    TEMP_CHANNEL_MAX_WEIGHT,
 )
 from biofizic.engine.arousal_mapper import (
     arousal_scale_10_to_label,
@@ -49,6 +50,10 @@ from biofizic.engine.arousal_mapper import (
     population_arousal_10,
 )
 from biofizic.engine.baseline import RestBaselineStore
+from biofizic.engine.channels.temperature import (
+    SkinTemperatureChannelState,
+    evaluate_skin_temperature,
+)
 from biofizic.engine.signal_quality import SignalQuality
 from biofizic.ingestion.messages import SensorBatchMessage
 
@@ -110,6 +115,49 @@ def _cusum_update(state: DecisionState, z: float) -> bool:
     return state.cusum_alert
 
 
+# ── Multi-channel fusion ─────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class FusionChannel:
+    """One arousal channel feeding the weighted-mean fusion.
+
+    name:       diagnostic label ("hrv", "hr", "temp", "resp").
+    z:          the channel's personal z-score (>0 = more aroused).
+    weight:     how much this channel contributes to the fused z. For HRV this
+                is the signal quality Q; for HR it is (1 - Q). New channels
+                (temp, resp) enter with weight 0 until their own quality gate is
+                wired in, which makes them an exact no-op against the current
+                pipeline (see _fuse).
+    confidence: the channel's own confidence, blended into fused_confidence with
+                the same weights.
+    """
+
+    name: str
+    z: float
+    weight: float
+    confidence: float
+
+
+def _fuse(channels: list[FusionChannel]) -> tuple[float, float]:
+    """Weighted mean of the channel z-scores and confidences.
+
+        z_fused    = Σ wᵢ·zᵢ    / Σ wᵢ
+        confidence = Σ wᵢ·confᵢ / Σ wᵢ
+
+    With only HRV (weight Q) and HR (weight 1-Q) the denominator is exactly 1,
+    so this reduces bit-for-bit to the previous
+        z_fused = Q·z_hrv + (1-Q)·z_hr
+    The normalisation only changes anything once a third channel adds weight,
+    at which point every channel is re-weighted to keep z_fused on the same
+    z-score scale. Returns (0, 0) if no channel carries weight."""
+    total_w = sum(c.weight for c in channels)
+    if total_w <= 0.0:
+        return 0.0, 0.0
+    z = sum(c.weight * c.z for c in channels) / total_w
+    conf = sum(c.weight * c.confidence for c in channels) / total_w
+    return z, conf
+
+
 # ── Public decision entry point ──────────────────────────────────────────────
 
 def decide(
@@ -121,6 +169,7 @@ def decide(
     baseline: RestBaselineStore,
     state: DecisionState,
     publish_epoch: bool,
+    temperature: "SkinTemperatureChannelState | None" = None,
 ) -> PhysiologyDecision:
     """One epoch tick: fuse channels, smooth via Kalman, gate the verdict.
 
@@ -147,12 +196,38 @@ def decide(
 
     # 2) Motion-tolerant fusion: HRV is precise when still, HR is robust in
     # motion. Weight by signal quality so the verdict leans on HR during VR
-    # activity instead of freezing.
+    # activity instead of freezing. Built as a list of channels and combined by
+    # a weighted mean (_fuse) so temp/resp channels can be appended later without
+    # touching this math; with only HRV+HR the result is identical to the prior
+    # z_fused = Q·z_hrv + (1-Q)·z_hr.
     hrv_weight = quality.quality
-    z_fused = hrv_weight * stress_z + (1.0 - hrv_weight) * hr_z
     hr_present = sdk_hr > 0.0 and baseline.is_ready
     hr_conf = HR_CHANNEL_CONFIDENCE if hr_present else 0.0
-    fused_confidence = hrv_weight * quality.quality + (1.0 - hrv_weight) * hr_conf
+    channels = [
+        FusionChannel("hrv", z=stress_z, weight=hrv_weight, confidence=quality.quality),
+        FusionChannel("hr", z=hr_z, weight=1.0 - hrv_weight, confidence=hr_conf),
+    ]
+    # Optional skin-temperature channel (secondary arousal proxy). It enters
+    # with weight = confidence · cap, so it is an EXACT no-op until its own
+    # baseline locks and the ambient gate is open (confidence > 0) — which keeps
+    # the HRV+HR-only result identical to before. The cap stops a slow signal
+    # from ever dominating the verdict.
+    temp_z = 0.0
+    temp_confidence = 0.0
+    if temperature is not None and sensor is not None:
+        temp_eval = evaluate_skin_temperature(
+            temperature,
+            skin_temp_c=sensor.skin_temperature_c,
+            ambient_temp_c=sensor.ambient_temperature_c,
+        )
+        temp_z = temp_eval.z
+        temp_confidence = temp_eval.confidence
+        temp_weight = temp_confidence * TEMP_CHANNEL_MAX_WEIGHT
+        if temp_weight > 0.0:
+            channels.append(
+                FusionChannel("temp", z=temp_z, weight=temp_weight, confidence=temp_confidence)
+            )
+    z_fused, fused_confidence = _fuse(channels)
 
     # 3) Preliminary cap: a pre-baseline verdict comes from the Kubios
     # population zone, so it must not look as confident as a calibrated one.

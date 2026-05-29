@@ -10,14 +10,26 @@ from __future__ import annotations
 from biofizic.legacy import LegacyEngines, toggles
 
 
-def test_toggles_off_by_default():
-    # The production default is off. Documented in toggles.py.
-    assert not toggles.any_enabled()
+def test_legacy_output_never_enters_production_decision():
+    # Whatever the toggles, legacy/research output is surfaced only on
+    # biofizic/legacy/* via LegacyOutputs — it must never appear as a field on
+    # the production PhysiologyDecision that drives VR.
+    from dataclasses import fields
+    from biofizic.compute_features.results import PhysiologyDecision
+
+    decision_fields = {f.name for f in fields(PhysiologyDecision)}
+    for leaked in ("p_stress", "valence", "respiration", "rsa_bpm", "ppg_bpm"):
+        assert leaked not in decision_fields
 
 
-def test_legacy_engines_inactive_when_toggles_off():
-    # With all toggles off, the parallel engines report inactive so the
-    # compute service skips them.
+def test_legacy_engines_inactive_when_all_toggles_off(monkeypatch):
+    # With every toggle forced off, the parallel engines report inactive so the
+    # compute service skips them entirely (the "production light" path).
+    for flag in (
+        "ENABLE_RAW_PPG", "ENABLE_PPG_PEAKS", "ENABLE_WESAD",
+        "ENABLE_VALENCE", "ENABLE_RESPIRATION_COMPARE",
+    ):
+        monkeypatch.setattr(toggles, flag, False)
     eng = LegacyEngines()
     assert not eng.active
 

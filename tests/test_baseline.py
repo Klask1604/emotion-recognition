@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from biofizic.engine.baseline import RestBaselineStore
-from biofizic.config import BASELINE_MIN_REST_EPOCHS
+from biofizic.config import BASELINE_MIN_REST_SAMPLES
 
 
 @pytest.fixture
@@ -19,7 +19,7 @@ def baseline_path(tmp_path: Path) -> Path:
 def test_baseline_locks_after_required_rest_observations(baseline_path: Path):
     store = RestBaselineStore(path=baseline_path)
     assert not store.is_ready
-    for _ in range(BASELINE_MIN_REST_EPOCHS):
+    for _ in range(BASELINE_MIN_REST_SAMPLES):
         store.observe_resting(rmssd_ms=45.0, kubios_stress_index=10.0)
     assert store.is_ready
     assert store.baseline_rmssd_ms is not None
@@ -43,7 +43,7 @@ def test_zscore_is_zero_at_baseline_and_signed_correctly(baseline_path: Path):
 
 def test_baseline_persists_to_disk_and_reloads(baseline_path: Path):
     store = RestBaselineStore(path=baseline_path)
-    for _ in range(BASELINE_MIN_REST_EPOCHS):
+    for _ in range(BASELINE_MIN_REST_SAMPLES):
         store.observe_resting(rmssd_ms=50.0, kubios_stress_index=12.0)
     assert baseline_path.exists()
 
@@ -53,9 +53,44 @@ def test_baseline_persists_to_disk_and_reloads(baseline_path: Path):
     assert reloaded.baseline_stress_index == pytest.approx(store.baseline_stress_index)
 
 
+def test_spacing_gate_skips_samples_too_close_together(baseline_path: Path):
+    """With `now` provided, resting samples closer than the spacing interval are
+    dropped, so a 1 Hz caller cannot pack the baseline with correlated points."""
+    from biofizic.config import (
+        BASELINE_MIN_REST_SAMPLES,
+        BASELINE_OBSERVATION_INTERVAL_S,
+    )
+
+    store = RestBaselineStore(path=baseline_path)
+    # Fire 1 sample/second for as long as it would take WITHOUT spacing.
+    needed = BASELINE_MIN_REST_SAMPLES
+    for sec in range(needed):  # one call per second, same as the live loop
+        store.observe_resting(rmssd_ms=45.0, kubios_stress_index=10.0, now=float(sec))
+    # At 1 s spacing and a >1 s gate, only a fraction were accepted, so it must
+    # NOT be ready yet after `needed` seconds.
+    assert store.rest_observation_count < needed
+    assert not store.is_ready
+
+    # Now feed properly spaced samples until it locks.
+    t = 1000.0
+    while not store.is_ready:
+        store.observe_resting(rmssd_ms=45.0, kubios_stress_index=10.0, now=t)
+        t += BASELINE_OBSERVATION_INTERVAL_S
+    assert store.is_ready
+
+
+def test_no_spacing_gate_when_now_omitted(baseline_path: Path):
+    """Driving the store directly (no `now`) disables the spacing gate, so a
+    burst of N samples locks immediately — relied on by other unit tests."""
+    store = RestBaselineStore(path=baseline_path)
+    for _ in range(BASELINE_MIN_REST_SAMPLES):
+        store.observe_resting(rmssd_ms=45.0, kubios_stress_index=10.0)
+    assert store.is_ready
+
+
 def test_reset_for_recalibration_clears_state(baseline_path: Path):
     store = RestBaselineStore(path=baseline_path)
-    for _ in range(BASELINE_MIN_REST_EPOCHS):
+    for _ in range(BASELINE_MIN_REST_SAMPLES):
         store.observe_resting(rmssd_ms=45.0, kubios_stress_index=10.0)
     assert store.is_ready
 
