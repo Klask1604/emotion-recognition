@@ -42,6 +42,10 @@ ENABLE_VALENCE = True
 # (validate which source is reliable on wrist for a slow breather). Research
 # only; never feeds biofizic/state.
 ENABLE_RESPIRATION_COMPARE = True
+# PPG frequency-domain valence features (Frontiers 2025 replication) on
+# biofizic/legacy/valence_fd. Features only, no verdict; for the thesis
+# demonstration + future classifier training. Needs raw PPG. Never feeds state.
+ENABLE_VALENCE_FD = True
 
 
 def any_enabled() -> bool:
@@ -51,4 +55,5 @@ def any_enabled() -> bool:
         or ENABLE_WESAD
         or ENABLE_VALENCE
         or ENABLE_RESPIRATION_COMPARE
+        or ENABLE_VALENCE_FD
     )

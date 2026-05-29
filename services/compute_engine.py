@@ -322,6 +322,8 @@ class ComputeEngineService:
             client.publish("biofizic/legacy/valence", json.dumps({"ts": ts, **out.valence}), qos=0)
         if out.respiration is not None:
             client.publish("biofizic/legacy/resp", json.dumps({"ts": ts, **out.respiration}), qos=0)
+        if out.valence_fd is not None:
+            client.publish("biofizic/legacy/valence_fd", json.dumps({"ts": ts, **out.valence_fd}), qos=0)
 
     @staticmethod
     def _window_payload(window: WindowResult) -> dict:

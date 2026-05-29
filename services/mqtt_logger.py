@@ -118,6 +118,10 @@ FLOAT_FIELDS.update({
         "ppg_bpm", "ppg_conf", "ppg_prom",
         "agree_bpm_diff",
     ],
+    "biofizic/legacy/valence_fd": [
+        "bf", "fhf", "shf", "bf_n", "fhf_n", "shf_n",
+        "fhf_bf", "shf_bf", "shf_fhf", "f0_hz",
+    ],
 })
 
 ALL_TOPICS = list(FLOAT_FIELDS.keys()) + [
@@ -166,6 +170,10 @@ SEED_MEASUREMENTS: dict[str, list[str]] = {
     "biofizic_legacy_resp": [
         "rsa_bpm", "rsa_conf", "rsa_prom",
         "ppg_bpm", "ppg_conf", "ppg_prom", "agree_bpm_diff",
+    ],
+    "biofizic_legacy_valence_fd": [
+        "bf", "fhf", "shf", "bf_n", "fhf_n", "shf_n",
+        "fhf_bf", "shf_bf", "shf_fhf", "f0_hz",
     ],
     "biofizic_all_data_live": ["ppg_green", "ppg_ir", "ibi_ms", "ppg_peak"],
     # Cardiac comparator (test_engine + raw PPG sources). Seeded so Grafana

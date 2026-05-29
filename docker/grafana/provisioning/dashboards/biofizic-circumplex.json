@@ -20,79 +20,37 @@
     },
     {
       "id": 1,
-      "title": "Circumplex — current state vs emotion reference (set time range to a worn-watch window)",
+      "title": "Circumplex — ring=reference, blue=session points (X=valence proxy, Y=arousal). Quadrants: top=high arousal, right=positive. NW Fear/Anger, NE Happy/Excited, SW Sad/Tired, SE Relaxed/Sleepy.",
       "type": "xychart",
       "gridPos": { "h": 18, "w": 14, "x": 0, "y": 4 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
       "targets": [
         {
-          "refId": "RING",
+          "refId": "A",
           "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
           "editorMode": "code",
           "format": "table",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT 0.9*sin(g*0.0785398) AS x_ring, 5.5 + 4.5*cos(g*0.0785398) AS y_ring FROM generate_series(0,80) AS t(g)"
-        },
-        {
-          "refId": "LABELS",
-          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
-          "editorMode": "code",
-          "format": "table",
-          "queryType": "sql",
-          "rawQuery": true,
-          "rawSql": "SELECT * FROM (VALUES (0.0,10.0,'high arousal'),(0.0,1.0,'low arousal'),(0.95,5.5,'positive'),(-0.95,5.5,'negative'),(0.55,9.0,'Excited'),(0.80,7.0,'Happy'),(0.55,2.5,'Relaxed'),(0.20,1.3,'Sleepy'),(-0.55,9.0,'Fear'),(-0.80,7.0,'Anger'),(-0.55,2.5,'Sad'),(-0.20,1.3,'Tired')) AS labels(x_lab,y_lab,emotion)"
-        },
-        {
-          "refId": "NOW",
-          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
-          "editorMode": "code",
-          "format": "table",
-          "queryType": "sql",
-          "rawQuery": true,
-          "rawSql": "SELECT v.valence AS x_now, CAST(l.arousal_10 AS DOUBLE) AS y_now FROM biofizic_live l JOIN biofizic_legacy_valence v ON l.time = v.time WHERE l.arousal_10 IS NOT NULL AND $__timeFilter(l.time) ORDER BY l.time DESC LIMIT 1"
+          "rawSql": "SELECT x, y_ring, y_state FROM (SELECT 0.9*sin(g*0.0785398) AS x, 5.5 + 4.5*cos(g*0.0785398) AS y_ring, CAST(NULL AS DOUBLE) AS y_state FROM generate_series(0,80) AS t(g) UNION ALL SELECT v.valence AS x, CAST(NULL AS DOUBLE) AS y_ring, CAST(l.arousal_10 AS DOUBLE) AS y_state FROM biofizic_live l JOIN biofizic_legacy_valence v ON l.time = v.time WHERE l.arousal_10 IS NOT NULL AND $__timeFilter(l.time)) u ORDER BY x"
         }
       ],
       "options": {
-        "seriesMapping": "manual",
-        "series": [
-          {
-            "frame": { "matcher": { "id": "byRefId", "options": "RING" } },
-            "x": { "matcher": { "id": "byName", "options": "x_ring" } },
-            "y": { "matcher": { "id": "byName", "options": "y_ring" } },
-            "name": "ring",
-            "pointSize": { "fixed": 3 },
-            "pointColor": { "fixed": "#cccccc" }
-          },
-          {
-            "frame": { "matcher": { "id": "byRefId", "options": "LABELS" } },
-            "x": { "matcher": { "id": "byName", "options": "x_lab" } },
-            "y": { "matcher": { "id": "byName", "options": "y_lab" } },
-            "name": "emotions",
-            "pointSize": { "fixed": 8 },
-            "pointColor": { "fixed": "#f2cc0c" }
-          },
-          {
-            "frame": { "matcher": { "id": "byRefId", "options": "NOW" } },
-            "x": { "matcher": { "id": "byName", "options": "x_now" } },
-            "y": { "matcher": { "id": "byName", "options": "y_now" } },
-            "name": "current",
-            "pointSize": { "fixed": 16 },
-            "pointColor": { "fixed": "#3274D9" }
-          }
-        ],
+        "seriesMapping": "auto",
         "tooltip": { "mode": "single" },
-        "legend": { "showLegend": true, "placement": "right" }
+        "legend": { "showLegend": true, "placement": "bottom" }
       },
       "fieldConfig": {
-        "defaults": { "custom": { "show": "points", "axisGridShow": true } },
+        "defaults": {
+          "custom": { "show": "points", "pointSize": { "fixed": 5 }, "axisGridShow": true }
+        },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "x_ring" },
+            "matcher": { "id": "byName", "options": "x" },
             "properties": [
               { "id": "min", "value": -1.1 },
               { "id": "max", "value": 1.1 },
-              { "id": "custom.axisLabel", "value": "VALENCE proxy  (neg <- 0 -> pos)  [NOT trustworthy]" }
+              { "id": "custom.axisLabel", "value": "VALENCE proxy (neg <- 0 -> pos) [NOT trustworthy]" }
             ]
           },
           {
@@ -100,7 +58,16 @@
             "properties": [
               { "id": "min", "value": 0 },
               { "id": "max", "value": 11 },
-              { "id": "custom.axisLabel", "value": "AROUSAL 1-10 (real)" }
+              { "id": "custom.axisLabel", "value": "AROUSAL 1-10 (real)" },
+              { "id": "color", "value": { "fixed": "#cccccc", "mode": "fixed" } },
+              { "id": "displayName", "value": "reference ring" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "y_state" },
+            "properties": [
+              { "id": "color", "value": { "fixed": "#3274D9", "mode": "fixed" } },
+              { "id": "displayName", "value": "session state" }
             ]
           }
         ]
@@ -126,12 +93,14 @@
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "type": "value", "options": { "1": { "text": "calm/relaxed", "color": "green" } } },
-            { "type": "value", "options": { "2": { "text": "bored/sad", "color": "blue" } } },
-            { "type": "value", "options": { "3": { "text": "happy/excited", "color": "yellow" } } },
-            { "type": "value", "options": { "4": { "text": "stress/anger", "color": "red" } } }
+            { "type": "value", "options": { "1": { "text": "calm/relaxed", "color": "green", "index": 0 } } },
+            { "type": "value", "options": { "2": { "text": "bored/sad", "color": "blue", "index": 1 } } },
+            { "type": "value", "options": { "3": { "text": "happy/excited", "color": "yellow", "index": 2 } } },
+            { "type": "value", "options": { "4": { "text": "stress/anger", "color": "red", "index": 3 } } }
           ],
-          "color": { "mode": "thresholds" }
+          "color": { "mode": "fixed" },
+          "min": 1,
+          "max": 4
         }
       },
       "options": { "showValue": "never", "mergeValues": true, "rowHeight": 0.9 }

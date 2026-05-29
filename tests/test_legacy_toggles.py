@@ -27,7 +27,7 @@ def test_legacy_engines_inactive_when_all_toggles_off(monkeypatch):
     # compute service skips them entirely (the "production light" path).
     for flag in (
         "ENABLE_RAW_PPG", "ENABLE_PPG_PEAKS", "ENABLE_WESAD",
-        "ENABLE_VALENCE", "ENABLE_RESPIRATION_COMPARE",
+        "ENABLE_VALENCE", "ENABLE_RESPIRATION_COMPARE", "ENABLE_VALENCE_FD",
     ):
         monkeypatch.setattr(toggles, flag, False)
     eng = LegacyEngines()

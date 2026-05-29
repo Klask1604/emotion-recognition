@@ -68,6 +68,20 @@ PPG_MIN_BEAT_DISTANCE_S = 0.3
 PPG_ANALYSIS_WINDOW_S = 8.0
 PPG_PPA_BASELINE_WINDOW = 60
 
+# PPG frequency-domain valence features (replication of Frontiers Physiol. 2025,
+# PMC11893849), adapted to consumer PPG. Works at any sample rate (25 Hz
+# continuous or 100 Hz on-demand); fs is derived from timestamps. See
+# legacy/valence_ppg_fd.py.
+# Band-pass before the FFT. Paper uses 1-20 Hz at 125 Hz; we cap below Nyquist.
+VALENCE_FD_PPG_BAND_LO_HZ = 1.0
+VALENCE_FD_PPG_BAND_HI_HZ = 12.0
+# Half-width (Hz) of the power band centred on each HR harmonic (paper: ±0.2 Hz).
+VALENCE_FD_BAND_HALFWIDTH_HZ = 0.2
+# Minimum PPG samples before the FFT is attempted. The paper uses 20 s epochs;
+# at 25 Hz that is ~500 samples, at 100 Hz ~2000. Keep a floor that works for
+# both but still gives usable frequency resolution.
+VALENCE_FD_MIN_SAMPLES = 256
+
 
 # ---------------------------------------------------------------------------
 # Analysis windows (w60 primary EMPIRICAL; w30/w90 diagnostic)

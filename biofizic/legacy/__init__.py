@@ -21,6 +21,7 @@ class LegacyOutputs:
     wesad: dict | None = None     # {"p_stress": float}
     valence: dict | None = None   # {"valence": float, "ppa_z": float}
     respiration: dict | None = None  # {"rsa_bpm", "ppg_bpm", confidences, ...}
+    valence_fd: dict | None = None   # PPG frequency-domain features (9)
 
     def is_empty(self) -> bool:
         return (
@@ -28,6 +29,7 @@ class LegacyOutputs:
             and self.wesad is None
             and self.valence is None
             and self.respiration is None
+            and self.valence_fd is None
         )
 
 
@@ -39,10 +41,15 @@ class LegacyEngines:
         self._wesad = None
         self._valence = None
         self._respiration = None
+        self._valence_fd = None
         if toggles.ENABLE_RESPIRATION_COMPARE:
             from biofizic.legacy.respiration_compare import RespirationCompareEngine
 
             self._respiration = RespirationCompareEngine()
+        if toggles.ENABLE_VALENCE_FD:
+            from biofizic.legacy.valence_fd_engine import ValenceFdEngine
+
+            self._valence_fd = ValenceFdEngine()
 
         if toggles.ENABLE_RAW_PPG or toggles.ENABLE_PPG_PEAKS or toggles.ENABLE_VALENCE:
             from biofizic.legacy.raw_ppg import RawPpgEngine
@@ -67,7 +74,7 @@ class LegacyEngines:
 
     @property
     def active(self) -> bool:
-        return any((self._ppg, self._wesad, self._valence, self._respiration))
+        return any((self._ppg, self._wesad, self._valence, self._respiration, self._valence_fd))
 
     def run(self, *, batch, result, baseline) -> LegacyOutputs:
         """Run the enabled engines for one epoch. `batch` is the parsed
@@ -95,7 +102,11 @@ class LegacyEngines:
         if self._respiration is not None:
             respiration_out = self._respiration.compute(batch)
 
+        valence_fd_out = None
+        if self._valence_fd is not None:
+            valence_fd_out = self._valence_fd.compute(batch)
+
         return LegacyOutputs(
             ppg=ppg_out, wesad=wesad_out, valence=valence_out,
-            respiration=respiration_out,
+            respiration=respiration_out, valence_fd=valence_fd_out,
         )
