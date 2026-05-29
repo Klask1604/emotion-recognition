@@ -5,56 +5,102 @@
   "tags": ["biofizic", "legacy", "negative-result"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "panels": [
     {
       "id": 10,
-      "title": "READ ME — what this dashboard is (and is NOT)",
+      "title": "READ ME",
       "type": "text",
       "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
       "options": {
         "mode": "markdown",
-        "content": "**Russell circumplex built from a VALID arousal axis (HR/HRV, personal baseline) and a NON-VALIDATED valence proxy (PPA heuristic).** The valence axis is a documented negative result: its distribution is centred on 0 with no structure, and it is statistically independent of arousal (r ≈ 0.07) — i.e. independent *noise*, not a real second emotional dimension. The left/right split (calm vs bored, happy vs angry) is therefore decided largely by chance. Shown as a demonstration of *why wrist-only hardware cannot resolve valence* — NOT as a trustworthy emotion classifier. The VR decision uses arousal only."
+        "content": "**Russell circumplex: AROUSAL (Y, valid HR/HRV) x VALENCE (X, unvalidated PPA proxy).** The blue dot is the current state; the ring + emotion labels are a fixed reference. **The horizontal (valence) position is NOT trustworthy** — the proxy is independent noise vs arousal (r~0.07), so the dot drifts left/right largely by chance. Vertical (arousal) position is real. This visualises *why wrist-only cannot place emotion on the valence axis*; the VR decision uses arousal alone."
       }
     },
     {
       "id": 1,
-      "title": "Circumplex scatter — arousal (X, 1-10) vs valence proxy (Y, -1..1)",
+      "title": "Circumplex — current state vs emotion reference (set time range to a worn-watch window)",
       "type": "xychart",
-      "gridPos": { "h": 14, "w": 14, "x": 0, "y": 4 },
+      "gridPos": { "h": 18, "w": 14, "x": 0, "y": 4 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
       "targets": [
         {
+          "refId": "RING",
           "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
           "editorMode": "code",
           "format": "table",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT CAST(l.arousal_10 AS DOUBLE) AS arousal, v.valence AS valence FROM biofizic_live l JOIN biofizic_legacy_valence v ON l.time = v.time WHERE l.arousal_10 IS NOT NULL AND $__timeFilter(l.time)",
-          "refId": "A"
+          "rawSql": "SELECT 0.9*sin(g*0.0785398) AS x_ring, 5.5 + 4.5*cos(g*0.0785398) AS y_ring FROM generate_series(0,80) AS t(g)"
+        },
+        {
+          "refId": "LABELS",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "table",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT * FROM (VALUES (0.0,10.0,'high arousal'),(0.0,1.0,'low arousal'),(0.95,5.5,'positive'),(-0.95,5.5,'negative'),(0.55,9.0,'Excited'),(0.80,7.0,'Happy'),(0.55,2.5,'Relaxed'),(0.20,1.3,'Sleepy'),(-0.55,9.0,'Fear'),(-0.80,7.0,'Anger'),(-0.55,2.5,'Sad'),(-0.20,1.3,'Tired')) AS labels(x_lab,y_lab,emotion)"
+        },
+        {
+          "refId": "NOW",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "table",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT v.valence AS x_now, CAST(l.arousal_10 AS DOUBLE) AS y_now FROM biofizic_live l JOIN biofizic_legacy_valence v ON l.time = v.time WHERE l.arousal_10 IS NOT NULL AND $__timeFilter(l.time) ORDER BY l.time DESC LIMIT 1"
         }
       ],
       "options": {
-        "mapping": "auto",
-        "seriesMapping": "auto",
+        "seriesMapping": "manual",
+        "series": [
+          {
+            "frame": { "matcher": { "id": "byRefId", "options": "RING" } },
+            "x": { "matcher": { "id": "byName", "options": "x_ring" } },
+            "y": { "matcher": { "id": "byName", "options": "y_ring" } },
+            "name": "ring",
+            "pointSize": { "fixed": 3 },
+            "pointColor": { "fixed": "#cccccc" }
+          },
+          {
+            "frame": { "matcher": { "id": "byRefId", "options": "LABELS" } },
+            "x": { "matcher": { "id": "byName", "options": "x_lab" } },
+            "y": { "matcher": { "id": "byName", "options": "y_lab" } },
+            "name": "emotions",
+            "pointSize": { "fixed": 8 },
+            "pointColor": { "fixed": "#f2cc0c" }
+          },
+          {
+            "frame": { "matcher": { "id": "byRefId", "options": "NOW" } },
+            "x": { "matcher": { "id": "byName", "options": "x_now" } },
+            "y": { "matcher": { "id": "byName", "options": "y_now" } },
+            "name": "current",
+            "pointSize": { "fixed": 16 },
+            "pointColor": { "fixed": "#3274D9" }
+          }
+        ],
         "tooltip": { "mode": "single" },
-        "legend": { "showLegend": false }
+        "legend": { "showLegend": true, "placement": "right" }
       },
       "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "show": "points",
-            "pointSize": { "fixed": 4 },
-            "axisGridShow": true
-          }
-        },
+        "defaults": { "custom": { "show": "points", "axisGridShow": true } },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "valence" },
+            "matcher": { "id": "byName", "options": "x_ring" },
             "properties": [
-              { "id": "min", "value": -1 },
-              { "id": "max", "value": 1 }
+              { "id": "min", "value": -1.1 },
+              { "id": "max", "value": 1.1 },
+              { "id": "custom.axisLabel", "value": "VALENCE proxy  (neg <- 0 -> pos)  [NOT trustworthy]" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "y_ring" },
+            "properties": [
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 11 },
+              { "id": "custom.axisLabel", "value": "AROUSAL 1-10 (real)" }
             ]
           }
         ]
@@ -62,67 +108,58 @@
     },
     {
       "id": 2,
-      "title": "Quadrant over time (calm / happy / bored-sad / stress-anger)",
+      "title": "Quadrant over time",
       "type": "state-timeline",
-      "gridPos": { "h": 7, "w": 10, "x": 14, "y": 4 },
+      "gridPos": { "h": 9, "w": 10, "x": 14, "y": 4 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
       "targets": [
         {
+          "refId": "A",
           "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
           "editorMode": "code",
           "format": "time_series",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT l.time, CASE WHEN l.arousal_10 >= 5 AND v.valence >= 0 THEN 3 WHEN l.arousal_10 >= 5 AND v.valence < 0 THEN 4 WHEN l.arousal_10 < 5 AND v.valence >= 0 THEN 1 ELSE 2 END AS quadrant FROM biofizic_live l JOIN biofizic_legacy_valence v ON l.time = v.time WHERE l.arousal_10 IS NOT NULL AND $__timeFilter(l.time) ORDER BY l.time",
-          "refId": "A"
+          "rawSql": "SELECT l.time, CASE WHEN l.arousal_10 >= 5 AND v.valence >= 0 THEN 3 WHEN l.arousal_10 >= 5 AND v.valence < 0 THEN 4 WHEN l.arousal_10 < 5 AND v.valence >= 0 THEN 1 ELSE 2 END AS quadrant FROM biofizic_live l JOIN biofizic_legacy_valence v ON l.time = v.time WHERE l.arousal_10 IS NOT NULL AND $__timeFilter(l.time) ORDER BY l.time"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "type": "value", "options": { "1": { "text": "calm", "color": "green" } } },
+            { "type": "value", "options": { "1": { "text": "calm/relaxed", "color": "green" } } },
             { "type": "value", "options": { "2": { "text": "bored/sad", "color": "blue" } } },
             { "type": "value", "options": { "3": { "text": "happy/excited", "color": "yellow" } } },
             { "type": "value", "options": { "4": { "text": "stress/anger", "color": "red" } } }
           ],
           "color": { "mode": "thresholds" }
-        },
-        "overrides": []
+        }
       },
-      "options": {
-        "showValue": "never",
-        "mergeValues": true,
-        "rowHeight": 0.9
-      }
+      "options": { "showValue": "never", "mergeValues": true, "rowHeight": 0.9 }
     },
     {
       "id": 3,
       "title": "Arousal axis alone (the trustworthy signal)",
       "type": "timeseries",
-      "gridPos": { "h": 7, "w": 10, "x": 14, "y": 11 },
+      "gridPos": { "h": 9, "w": 10, "x": 14, "y": 13 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
       "targets": [
         {
+          "refId": "A",
           "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
           "editorMode": "code",
           "format": "time_series",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT time, arousal_10 FROM biofizic_live WHERE arousal_10 IS NOT NULL AND $__timeFilter(time) ORDER BY time",
-          "refId": "A"
+          "rawSql": "SELECT time, arousal_10 FROM biofizic_live WHERE arousal_10 IS NOT NULL AND $__timeFilter(time) ORDER BY time"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 15, "showPoints": "never", "lineInterpolation": "smooth" },
           "min": 1, "max": 10, "decimals": 0
-        },
-        "overrides": []
+        }
       },
-      "options": {
-        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
-        "tooltip": { "mode": "single", "sort": "none" }
-      }
+      "options": { "legend": { "showLegend": false }, "tooltip": { "mode": "single" } }
     }
   ]
 }
