@@ -1,0 +1,142 @@
+{
+  "id": null,
+  "uid": "biofizic-circumplex",
+  "title": "Biofizic Circumplex (arousal REAL x valence PROXY — limitation demo)",
+  "tags": ["biofizic", "legacy", "negative-result"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 10,
+      "title": "READ ME — what this dashboard is (and is NOT)",
+      "type": "text",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Russell circumplex built from a VALID arousal axis (HR/HRV, personal baseline) and a NON-VALIDATED valence proxy (PPA heuristic).** The valence axis is a documented negative result: its distribution is centred on 0 with no structure, and it is statistically independent of arousal (r ≈ 0.07) — i.e. independent *noise*, not a real second emotional dimension. The left/right split (calm vs bored, happy vs angry) is therefore decided largely by chance. Shown as a demonstration of *why wrist-only hardware cannot resolve valence* — NOT as a trustworthy emotion classifier. The VR decision uses arousal only."
+      }
+    },
+    {
+      "id": 1,
+      "title": "Circumplex scatter — arousal (X, 1-10) vs valence proxy (Y, -1..1)",
+      "type": "xychart",
+      "gridPos": { "h": 14, "w": 14, "x": 0, "y": 4 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "table",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT l.arousal_10 AS arousal, v.valence AS valence FROM biofizic_live l JOIN biofizic_legacy_valence v ON l.time = v.time WHERE l.arousal_10 IS NOT NULL AND $__timeFilter(l.time)",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "mapping": "manual",
+        "series": [
+          {
+            "x": { "matcher": { "id": "byName", "options": "arousal" } },
+            "y": { "matcher": { "id": "byName", "options": "valence" } },
+            "pointSize": { "fixed": 4 },
+            "pointColor": { "fixed": "#3274D9" }
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "pointSize": 4,
+            "axisLabel": "",
+            "scaleDistribution": { "type": "linear" }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "arousal" },
+            "properties": [
+              { "id": "min", "value": 1 },
+              { "id": "max", "value": 10 },
+              { "id": "custom.axisLabel", "value": "AROUSAL (low <-- 5 --> high)" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "valence" },
+            "properties": [
+              { "id": "min", "value": -1 },
+              { "id": "max", "value": 1 },
+              { "id": "custom.axisLabel", "value": "VALENCE proxy (neg <-- 0 --> pos)" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "title": "Quadrant over time (calm / happy / bored-sad / stress-anger)",
+      "type": "state-timeline",
+      "gridPos": { "h": 7, "w": 10, "x": 14, "y": 4 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT l.time, CASE WHEN l.arousal_10 >= 5 AND v.valence >= 0 THEN 3 WHEN l.arousal_10 >= 5 AND v.valence < 0 THEN 4 WHEN l.arousal_10 < 5 AND v.valence >= 0 THEN 1 ELSE 2 END AS quadrant FROM biofizic_live l JOIN biofizic_legacy_valence v ON l.time = v.time WHERE l.arousal_10 IS NOT NULL AND $__timeFilter(l.time) ORDER BY l.time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "calm", "color": "green" } } },
+            { "type": "value", "options": { "2": { "text": "bored/sad", "color": "blue" } } },
+            { "type": "value", "options": { "3": { "text": "happy/excited", "color": "yellow" } } },
+            { "type": "value", "options": { "4": { "text": "stress/anger", "color": "red" } } }
+          ],
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showValue": "never",
+        "mergeValues": true,
+        "rowHeight": 0.9
+      }
+    },
+    {
+      "id": 3,
+      "title": "Arousal axis alone (the trustworthy signal)",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 10, "x": 14, "y": 11 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, arousal_10 FROM biofizic_live WHERE arousal_10 IS NOT NULL AND $__timeFilter(time) ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 15, "showPoints": "never", "lineInterpolation": "smooth" },
+          "min": 1, "max": 10, "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      }
+    }
+  ]
+}
