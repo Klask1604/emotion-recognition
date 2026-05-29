@@ -6,6 +6,11 @@ x-python-service: &python-service
   restart: unless-stopped
   environment:
     PYTHONPATH: /app
+  # mosquitto runs natively on the host (not in Docker), so containers reach it
+  # via host.docker.internal. On Linux this name is not built in — map it to the
+  # host gateway. Set MQTT_BROKER=host.docker.internal in .env on such a host.
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
 
 services:
   influxdb:
