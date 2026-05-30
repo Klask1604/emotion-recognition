@@ -2,10 +2,11 @@
 Peripheral skin-temperature arousal channel (isolated; not yet in the pipeline).
 
 Physiology: sympathetic arousal triggers cutaneous vasoconstriction, so the
-peripheral (wrist) skin temperature DROPS when arousal rises (Sensors 2026
+peripheral skin temperature (e.g. wrist) DROPS when arousal rises (Sensors 2026
 multimodal SNS review; cutaneous vasoconstriction literature). Skin temperature
-therefore complements HRV/HR by separating genuine arousal from movement, and is
-already sampled by the watch (skin_temp / ambient_temp) but currently unused.
+therefore complements HRV/HR by separating genuine arousal from movement; it is
+provided as the SKIN_TEMP capability (skin_temp / ambient_temp) when a device
+carries a peripheral temperature sensor.
 
 This module mirrors the design of engine/baseline.RestBaselineStore but in
 LINEAR space (°C is not a positive multiplicative quantity like RMSSD/SI, so no

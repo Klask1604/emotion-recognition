@@ -145,6 +145,8 @@ LIVE_AROUSAL_HYSTERESIS_TICKS = 3
 # 5% gate is never met on the wrist -> confidence pinned near 0 AND the baseline
 # never updates. 15% is a realistic wrist-PPG threshold (beats are still
 # corrected by interpolation regardless; this only sets the trust cutoff).
+# This is the SOURCE VALUE for the "wrist_ppg" SensorProfile; other modalities
+# (e.g. chest ECG ~5%) define their own profile in sensing/profiles.py.
 ARTIFACT_RATE_MAX = 0.15
 
 # Samples collected before the still/moving classifier is trusted; until then

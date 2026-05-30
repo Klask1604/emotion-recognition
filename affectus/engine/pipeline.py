@@ -49,7 +49,7 @@ class PhysiologyPipeline:
 
     The earlier WISDM HAR classifier, motion calibrator and context engine have
     been removed. Motion is no longer classified into activities; instead the
-    physical cause that HAR only approximated (wrist motion corrupting the PPG)
+    physical cause that HAR only approximated (body motion corrupting the PPG)
     is measured directly via a signal-quality gate: cardiac-band acceleration
     energy plus the IBI artifact rate (see decision/signal_quality.py).
     """

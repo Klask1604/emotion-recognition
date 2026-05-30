@@ -159,7 +159,7 @@ class RestBaselineStore:
     def hr_z_score(self, heart_rate_bpm: float) -> float:
         """z>0 means HR above the personal resting baseline (arousal up).
 
-        HR is robust to wrist motion (SDK-processed), so this anchors the
+        HR is robust to body motion (SDK-processed), so this anchors the
         fusion arousal when HRV is unreliable (exertion / motion)."""
         if not self.is_ready or heart_rate_bpm <= 0 or not self._ln_hr:
             return 0.0

@@ -1,21 +1,23 @@
 """
-Signal-quality gate: deterministic, hysteresis-stabilised wrist HRV reliability.
+Signal-quality gate: deterministic, hysteresis-stabilised HRV reliability.
 
-The validity of wrist HRV is limited by motion contaminating the optical PPG
-and by the IBI artifacts that result. We measure both directly instead of
-inferring an activity class:
+Device-agnostic. The validity of optical (PPG) HRV is limited by motion
+contaminating the pulse and by the IBI artifacts that result; the gate measures
+both directly instead of inferring an activity class. The same gate applies to
+any worn optical sensor (wrist, ear, ...); device-dependent thresholds come from
+the SensorProfile, not from this algorithm.
 
-  M = acceleration power in the cardiac band (0.5-4 Hz), reported per batch by
-      the watch. This is the band that overlaps the PPG pulse, i.e. the part of
-      wrist motion that actually corrupts the optical signal (cf. accelerometer
+  M = acceleration power in the cardiac band (0.5-4 Hz), reported per frame by
+      the device. This is the band that overlaps the PPG pulse, i.e. the part of
+      body motion that actually corrupts the optical signal (cf. accelerometer
       motion-artifact removal, TROIKA, Zhang et al. 2015).
   A = IBI artifact rate, the fraction of beats rejected by the physiological /
       outlier filter over the analysis window. A standard HRV signal-quality
       index (Task Force ESC/NASPE 1996).
 
 still vs moving is decided from M against the subject's own resting motion
-baseline (robust median + MAD), NOT from A: at rest the wrist is nearly
-motionless (M ~ 0) yet wrist PPG still yields IBI artifacts, so the artifact
+baseline (robust median + MAD), NOT from A: at rest the body part is nearly
+motionless (M ~ 0) yet optical PPG still yields IBI artifacts, so the artifact
 rate is not a motion proxy.
 
 Q is a deterministic function (no per-user online learning):
