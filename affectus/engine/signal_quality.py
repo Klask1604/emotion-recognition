@@ -39,15 +39,16 @@ from collections import deque
 from dataclasses import dataclass, field
 
 from affectus.config import (
-    ARTIFACT_RATE_MAX,
     MIN_QUALITY_UPDATES,
     MOTION_BASELINE_WINDOW,
     MOTION_ENERGY_SIGMA_FLOOR,
     MOTION_ENERGY_SIGMA_REL,
     MOTION_ENTER_SIGMA,
     MOTION_EXIT_SIGMA,
-    MOTION_MOVING_QUALITY_FACTOR,
 )
+
+# Device-modality thresholds (artifact cutoff, motion penalty) now come from a
+# SensorProfile passed to update_and_score; see sensing/profiles.py.
 
 
 def _median(values: list[float]) -> float:
@@ -106,6 +107,7 @@ def update_and_score(
     artifact_rate: float,
     state: SignalQualityState,
     has_signal: bool = True,
+    profile: "SensorProfile | None" = None,
 ) -> SignalQuality:
     """Score the current epoch and update the motion baseline.
 
@@ -114,7 +116,16 @@ def update_and_score(
     is not 'perfect'). We still classify motion (for the running baseline) and
     return Q=0 + usable=False so downstream UIs do NOT show fake-high
     confidence in nothing.
+
+    `profile` carries the device-modality thresholds (artifact cutoff, motion
+    penalty). Defaults to the wrist-PPG profile, reproducing the prior values.
     """
+    from affectus.sensing.profiles import profile_for
+
+    if profile is None:
+        profile = profile_for("wrist_ppg")
+    artifact_max = profile.artifact_rate_max
+    moving_quality_factor = profile.motion_moving_quality_factor
     m = max(0.0, float(motion_energy))
     if not has_signal:
         # Keep the motion baseline current — that estimator is independent of
@@ -141,13 +152,13 @@ def update_and_score(
     # Smooth confidence that degrades gradually (1 at zero artifacts, 0.5 at the
     # reliability cutoff) instead of snapping to 0 the moment A exceeds it — so
     # the displayed confidence is informative, not stuck at 0%.
-    artifact_quality = 1.0 / (1.0 + (a / ARTIFACT_RATE_MAX) ** 2)
+    artifact_quality = 1.0 / (1.0 + (a / artifact_max) ** 2)
     quality = artifact_quality
     if moving:
-        # Motion corrupts wrist PPG even when beats stay in range (low artifact
-        # rate but wrong RMSSD), so a moving epoch is not trustworthy.
-        quality *= MOTION_MOVING_QUALITY_FACTOR
-    usable = (a <= ARTIFACT_RATE_MAX) and not moving
+        # Motion corrupts the optical signal even when beats stay in range (low
+        # artifact rate but wrong RMSSD), so a moving epoch is not trustworthy.
+        quality *= moving_quality_factor
+    usable = (a <= artifact_max) and not moving
 
     return SignalQuality(
         quality=quality,
