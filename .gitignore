@@ -43,3 +43,8 @@ desktop.ini
 
 # Docker local overrides
 docker-compose.override.yml
+
+# downloaded reference notebook
+david.ipynb
+# feature caches
+data/*.npz
