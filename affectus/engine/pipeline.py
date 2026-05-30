@@ -71,10 +71,26 @@ class PhysiologyPipeline:
         self.ibi_buffer.ingest_batch(batch)
 
     def ingest_acquisition(self, batch: AcquisitionBatchMessage) -> None:
-        """Atomic ingest: IBI + sensor stats share ts_anchor."""
-        self.ingest_ibi_batch(batch.to_ibi_batch())
-        self.ingest_sensor_batch(batch.to_sensor_batch())
-        self.motion_buffer.ingest(batch.timestamp_anchor_ms, batch.motion_energy())
+        """Atomic ingest of a v2 watch batch. Wraps it into a device-agnostic
+        SensorFrame and delegates, so every wearable enters through one path."""
+        from affectus.sensing.adapters.schema_v2 import frame_from_acquisition_v2
+
+        self.ingest_frame(frame_from_acquisition_v2(batch))
+
+    def ingest_frame(self, frame: "SensorFrame") -> None:
+        """Capability-agnostic ingest: route the canonical slots of any frame
+        into the rolling buffers. Only signals the frame actually carries are
+        ingested (e.g. no MOTION capability -> motion buffer untouched)."""
+        from affectus.sensing.capabilities import Capability
+
+        if frame.has(Capability.IBI) and frame.ibi is not None:
+            self.ingest_ibi_batch(frame.ibi)
+        # The legacy decision path still reads SensorBatchMessage; keep it fed
+        # from the frame's raw message when present (wrist v2), else synthesise.
+        if frame.raw is not None:
+            self.ingest_sensor_batch(frame.raw.to_sensor_batch())
+        if frame.has(Capability.MOTION) and frame.motion_energy is not None:
+            self.motion_buffer.ingest(frame.timestamp_ms, frame.motion_energy)
 
     def ingest_sensor_batch(self, batch: SensorBatchMessage) -> None:
         self.state.last_sensor = batch
