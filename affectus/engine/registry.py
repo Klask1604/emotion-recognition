@@ -35,6 +35,9 @@ class ChannelContext:
     quality: object                      # SignalQuality
     baseline: object                     # RestBaselineStore
     temperature: object | None = None    # SkinTemperatureChannelState
+    valence_wesad: object | None = None  # ValenceWesadState
+    ppg_green: list | None = None        # raw PPG window (for valence features)
+    ppg_ts_ms: list | None = None
     present: frozenset[Capability] = frozenset()
 
 
@@ -74,6 +77,26 @@ def _eval_temp(ctx: ChannelContext) -> FusionChannel | None:
     return FusionChannel("temp", z=ev.z, weight=weight, confidence=ev.confidence)
 
 
+def _eval_valence_wesad(ctx: ChannelContext) -> FusionChannel | None:
+    """WESAD-trained valence channel. Predicts positive/negative valence from the
+    raw PPG window and contributes a capped, confidence-weighted z. Skipped
+    entirely when the model is absent, PPG is missing, or the cap is 0."""
+    if ctx.valence_wesad is None or not ctx.ppg_green:
+        return None
+    from affectus.engine.channels.valence_wesad import (
+        evaluate_valence_wesad,
+        valence_weight,
+    )
+
+    res = evaluate_valence_wesad(ctx.valence_wesad, ctx.ppg_green, ctx.ppg_ts_ms or [])
+    if res is None:
+        return None
+    weight = valence_weight(res.confidence)
+    if weight <= 0.0:
+        return None
+    return FusionChannel("valence_wesad", z=res.z, weight=weight, confidence=res.confidence)
+
+
 @dataclass(frozen=True)
 class ChannelSpec:
     name: str
@@ -86,8 +109,11 @@ CHANNEL_REGISTRY: list[ChannelSpec] = [
     ChannelSpec("hrv", frozenset({Capability.IBI}), _eval_hrv),
     ChannelSpec("hr", frozenset({Capability.HR}), _eval_hr),
     ChannelSpec("temp", frozenset({Capability.SKIN_TEMP}), _eval_temp),
+    # Valence model needs the raw PPG waveform (vascular/morphology features).
+    # Default-disabled via VALENCE_WESAD_MAX_WEIGHT=0 -> evaluate returns None.
+    ChannelSpec("valence_wesad",
+                frozenset({Capability.IBI, Capability.PPG}), _eval_valence_wesad),
     # Future: ChannelSpec("eda", frozenset({Capability.EDA}), _eval_eda)
-    # Future: ChannelSpec("valence_wesad", frozenset({IBI, PPG}), _eval_valence_wesad)
 ]
 
 

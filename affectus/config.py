@@ -237,6 +237,15 @@ TEMP_AMBIENT_DRIFT_C_FULL_PENALTY = 3.0
 # physiological constant. Set to 0 to disable the channel without code changes.
 TEMP_CHANNEL_MAX_WEIGHT = 0.25
 
+# Cap on the WESAD-trained valence channel's fusion weight. This is the first ML
+# model crossing from research into the production decision, and it is trained on
+# a FOREIGN device (Empatica E4 wrist BVP) — a documented domain shift to the
+# Galaxy Watch. So it is bounded to only nudge the verdict, never dominate, and
+# defaults to 0 (disabled) until validated on live watch data. Flip up once the
+# transfer is confirmed. The valence channel is also an arousal-orthogonal
+# signal: it informs the positive/negative axis, not the intensity axis.
+VALENCE_WESAD_MAX_WEIGHT = 0.0
+
 
 # ---------------------------------------------------------------------------
 # Respiration estimators (RESEARCH — engine/channels/respiration_*; not fused yet)
