@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from biofizic.engine.baseline import RestBaselineStore
-from biofizic.config import BASELINE_MIN_REST_SAMPLES
+from affectus.engine.baseline import RestBaselineStore
+from affectus.config import BASELINE_MIN_REST_SAMPLES
 
 
 @pytest.fixture

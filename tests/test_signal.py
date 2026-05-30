@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from biofizic.dsp.ibi_filter import (
+from affectus.dsp.ibi_filter import (
     filter_physiological_intervals,
     successive_interval_differences,
 )
-from biofizic.ingestion.messages import InterbeatIntervalEntry
+from affectus.ingestion.messages import InterbeatIntervalEntry
 
 
 def _entries(values: list[int]) -> list[InterbeatIntervalEntry]:

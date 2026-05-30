@@ -13,16 +13,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from biofizic.compute_features.results import HrvMetrics, MultiWindowHrvResult
-from biofizic.config import (
+from affectus.compute_features.results import HrvMetrics, MultiWindowHrvResult
+from affectus.config import (
     BASELINE_MIN_REST_SAMPLES,
     TEMP_BASELINE_MIN_REST_EPOCHS,
 )
-from biofizic.engine.baseline import RestBaselineStore
-from biofizic.engine.channels.temperature import SkinTemperatureChannelState
-from biofizic.engine.decision import DecisionState, decide
-from biofizic.engine.signal_quality import SignalQuality
-from biofizic.ingestion.messages import SensorBatchMessage
+from affectus.engine.baseline import RestBaselineStore
+from affectus.engine.channels.temperature import SkinTemperatureChannelState
+from affectus.engine.decision import DecisionState, decide
+from affectus.engine.signal_quality import SignalQuality
+from affectus.ingestion.messages import SensorBatchMessage
 
 
 def _metrics(rmssd: float = 35.0, si: float = 18.0, hr: float = 85.0) -> HrvMetrics:

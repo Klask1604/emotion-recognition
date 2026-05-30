@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from biofizic.config import KubiosZoneId
-from biofizic.engine.arousal_mapper import (
+from affectus.config import KubiosZoneId
+from affectus.engine.arousal_mapper import (
     arousal_scale_10_to_label,
     cohen_kappa,
     kubios_zone_for_stress_index,

@@ -11,8 +11,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from biofizic.compute_features.hrv_metrics import compute_hrv_from_entries
-from biofizic.ingestion.messages import InterbeatIntervalEntry
+from affectus.compute_features.hrv_metrics import compute_hrv_from_entries
+from affectus.ingestion.messages import InterbeatIntervalEntry
 
 nk = pytest.importorskip("neurokit2", reason="NeuroKit2 not installed (dev-only oracle)")
 

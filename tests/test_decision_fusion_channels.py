@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from biofizic.engine.decision import FusionChannel, _fuse
+from affectus.engine.decision import FusionChannel, _fuse
 
 
 def _old_blend(q: float, z_hrv: float, z_hr: float) -> float:

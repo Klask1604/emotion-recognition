@@ -7,7 +7,7 @@ import pytest
 
 pytest.importorskip("scipy", reason="scipy is a research-only dependency")
 
-from biofizic.dsp.ppg_peaks import detect_ppg_peaks
+from affectus.dsp.ppg_peaks import detect_ppg_peaks
 
 
 def test_detects_pulse_peaks_on_synthetic_wave():

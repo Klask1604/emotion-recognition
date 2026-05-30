@@ -16,7 +16,7 @@ _sys_root = Path(__file__).resolve().parents[1]
 if str(_sys_root) not in sys.path:
     sys.path.insert(0, str(_sys_root))
 
-import biofizic._bootstrap  # noqa: F401
+import affectus._bootstrap  # noqa: F401
 import argparse
 import json
 import logging

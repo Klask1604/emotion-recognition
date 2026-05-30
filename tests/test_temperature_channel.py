@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import pytest
 
-from biofizic.config import (
+from affectus.config import (
     TEMP_AMBIENT_DRIFT_C_FULL_PENALTY,
     TEMP_BASELINE_MIN_REST_EPOCHS,
 )
-from biofizic.engine.channels.temperature import (
+from affectus.engine.channels.temperature import (
     SkinTemperatureChannelState,
     evaluate_skin_temperature,
     skin_temperature_z,

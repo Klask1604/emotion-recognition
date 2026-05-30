@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 
-from biofizic.engine.pipeline import PhysiologyPipeline
+from affectus.engine.pipeline import PhysiologyPipeline
 
 from services.test_engine import (
     WINDOW_SEC,

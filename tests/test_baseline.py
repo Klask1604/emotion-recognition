@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from biofizic.engine.baseline import RestBaselineStore
-from biofizic.config import BASELINE_MIN_REST_SAMPLES
+from affectus.engine.baseline import RestBaselineStore
+from affectus.config import BASELINE_MIN_REST_SAMPLES
 
 
 @pytest.fixture
@@ -56,7 +56,7 @@ def test_baseline_persists_to_disk_and_reloads(baseline_path: Path):
 def test_spacing_gate_skips_samples_too_close_together(baseline_path: Path):
     """With `now` provided, resting samples closer than the spacing interval are
     dropped, so a 1 Hz caller cannot pack the baseline with correlated points."""
-    from biofizic.config import (
+    from affectus.config import (
         BASELINE_MIN_REST_SAMPLES,
         BASELINE_OBSERVATION_INTERVAL_S,
     )

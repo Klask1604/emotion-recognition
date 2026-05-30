@@ -11,8 +11,8 @@ import math
 
 import numpy as np
 
-from biofizic.ingestion.messages import AcquisitionBatchMessage
-from biofizic.legacy.respiration_compare import RespirationCompareEngine
+from affectus.ingestion.messages import AcquisitionBatchMessage
+from affectus.legacy.respiration_compare import RespirationCompareEngine
 
 
 def _ibi_modulated(breathing_hz: float, n: int = 80):
@@ -80,12 +80,12 @@ def test_comparator_never_feeds_production_decision():
     its own topic and must never appear in the production PhysiologyDecision.
     (The toggle itself may be flipped on for a research session; what matters is
     that it stays on the legacy path.)"""
-    from biofizic.legacy import LegacyEngines
+    from affectus.legacy import LegacyEngines
     # Whatever the toggle, the comparator output is surfaced only via
     # LegacyOutputs.respiration, never via the decision path.
     assert hasattr(LegacyEngines, "run")
     from dataclasses import fields
-    from biofizic.compute_features.results import PhysiologyDecision
+    from affectus.compute_features.results import PhysiologyDecision
     decision_fields = {f.name for f in fields(PhysiologyDecision)}
     assert "respiration" not in decision_fields
     assert "rsa_bpm" not in decision_fields

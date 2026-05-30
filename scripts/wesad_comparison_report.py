@@ -32,8 +32,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import biofizic._bootstrap  # noqa: F401
-from biofizic.engine.arousal_mapper import cohen_kappa
+import affectus._bootstrap  # noqa: F401
+from affectus.engine.arousal_mapper import cohen_kappa
 
 
 def query_sql(url: str, database: str, sql: str) -> list[dict]:

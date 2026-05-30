@@ -7,7 +7,7 @@ compute."""
 
 from __future__ import annotations
 
-from biofizic.legacy import LegacyEngines, toggles
+from affectus.legacy import LegacyEngines, toggles
 
 
 def test_legacy_output_never_enters_production_decision():
@@ -15,7 +15,7 @@ def test_legacy_output_never_enters_production_decision():
     # biofizic/legacy/* via LegacyOutputs — it must never appear as a field on
     # the production PhysiologyDecision that drives VR.
     from dataclasses import fields
-    from biofizic.compute_features.results import PhysiologyDecision
+    from affectus.compute_features.results import PhysiologyDecision
 
     decision_fields = {f.name for f in fields(PhysiologyDecision)}
     for leaked in ("p_stress", "valence", "respiration", "rsa_bpm", "ppg_bpm"):

@@ -14,7 +14,7 @@ Two parallel observers on the same MQTT stream as production:
   raw PPG source) that run the full production decision stack (signal_quality →
   baseline → fusion → Kalman → decision_gate → arousal_mapper) on IBI derived
   from PPG peak detection instead of Samsung's processed IBI. Motion + temp are
-  reused from biofizic/acquisition/batch so the only variable is the IBI source.
+  reused from affectus/acquisition/batch so the only variable is the IBI source.
   Published on biofizic/test/derived/ppg_only_<source>.
 
 Production (compute_engine) is NOT touched. This is an independent observer.
@@ -37,15 +37,15 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import biofizic._bootstrap  # noqa: F401
+import affectus._bootstrap  # noqa: F401
 
 import paho.mqtt.client as mqtt
 
-from biofizic.dsp.ppg_peaks import detect_ppg_peaks
-from biofizic.compute_features.hrv_metrics import compute_hrv_from_entries
-from biofizic.engine.baseline import RestBaselineStore
-from biofizic.engine.pipeline import PhysiologyPipeline
-from biofizic.ingestion.messages import (
+from affectus.dsp.ppg_peaks import detect_ppg_peaks
+from affectus.compute_features.hrv_metrics import compute_hrv_from_entries
+from affectus.engine.baseline import RestBaselineStore
+from affectus.engine.pipeline import PhysiologyPipeline
+from affectus.ingestion.messages import (
     AcquisitionBatchMessage,
     InterbeatIntervalEntry,
 )
@@ -84,7 +84,7 @@ class InMemoryBaselineStore(RestBaselineStore):
         # from disk. Reproduce the field initialisation by hand.
         from collections import deque as _deque
 
-        from biofizic.config import BASELINE_ROBUST_WINDOW_EPOCHS
+        from affectus.config import BASELINE_ROBUST_WINDOW_EPOCHS
 
         self._path = Path("/dev/null")
         self._ln_rmssd: deque[float] = _deque(maxlen=BASELINE_ROBUST_WINDOW_EPOCHS)

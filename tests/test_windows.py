@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from biofizic.ingestion.messages import IbiBatchMessage
-from biofizic.compute_features.windows import RollingIbiBuffer, RollingSensorBuffer
+from affectus.ingestion.messages import IbiBatchMessage
+from affectus.compute_features.windows import RollingIbiBuffer, RollingSensorBuffer
 
 
 def test_ingest_keeps_all_beats_when_timestamps_partial():

@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import pytest
 
-from biofizic.compute_features.hrv_metrics import compute_hrv_from_entries
-from biofizic.dsp.artifact_correction import correct_ibi_series
-from biofizic.ingestion.messages import InterbeatIntervalEntry
+from affectus.compute_features.hrv_metrics import compute_hrv_from_entries
+from affectus.dsp.artifact_correction import correct_ibi_series
+from affectus.ingestion.messages import InterbeatIntervalEntry
 
 
 def _alternating(mean_ms: int, d: int, n: int) -> list[InterbeatIntervalEntry]:

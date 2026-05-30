@@ -5,7 +5,7 @@ Extract PPG frequency-domain valence features from the DEAP dataset.
 For every (subject, trial) we take the PPG channel (DEAP channel 38,
 Plethysmograph, 128 Hz), slice it into the same 20 s windows used on the watch,
 estimate HR per window (to anchor the harmonic bands), and run the SAME feature
-extractor as the live system (biofizic.legacy.valence_ppg_fd) — so the DEAP
+extractor as the live system (affectus.legacy.valence_ppg_fd) — so the DEAP
 features and the Galaxy-Watch features are identical by construction. The valence
 label (DEAP scale 1-9) is binarised at 5 (the standard DEAP split: low vs high
 valence).
@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from biofizic.legacy.valence_ppg_fd import (  # noqa: E402
+from affectus.legacy.valence_ppg_fd import (  # noqa: E402
     ValenceFdFeatures,
     extract_valence_fd_features,
 )

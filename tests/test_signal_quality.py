@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from biofizic.config import ARTIFACT_RATE_MAX
-from biofizic.engine.signal_quality import (
+from affectus.config import ARTIFACT_RATE_MAX
+from affectus.engine.signal_quality import (
     SignalQualityState,
     update_and_score,
 )

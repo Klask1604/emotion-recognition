@@ -12,9 +12,9 @@ import math
 
 import numpy as np
 
-from biofizic.config import RSA_MIN_BEATS
-from biofizic.engine.channels.respiration_rsa import estimate_respiration_rsa
-from biofizic.ingestion.messages import InterbeatIntervalEntry
+from affectus.config import RSA_MIN_BEATS
+from affectus.engine.channels.respiration_rsa import estimate_respiration_rsa
+from affectus.ingestion.messages import InterbeatIntervalEntry
 
 
 def _synth_ibi(

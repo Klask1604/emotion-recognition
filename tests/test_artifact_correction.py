@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from biofizic.dsp.artifact_correction import correct_ibi_series
-from biofizic.ingestion.messages import InterbeatIntervalEntry
+from affectus.dsp.artifact_correction import correct_ibi_series
+from affectus.ingestion.messages import InterbeatIntervalEntry
 
 
 def _series(values: list[int]) -> list[InterbeatIntervalEntry]:

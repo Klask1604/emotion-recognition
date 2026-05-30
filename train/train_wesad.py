@@ -29,10 +29,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import biofizic._bootstrap  # noqa: F401
-from biofizic.compute_features.hrv_metrics import compute_hrv_from_entries
-from biofizic.ingestion.messages import InterbeatIntervalEntry
-from biofizic.legacy.wesad import WESAD_FEATURE_NAMES, wesad_feature_vector
+import affectus._bootstrap  # noqa: F401
+from affectus.compute_features.hrv_metrics import compute_hrv_from_entries
+from affectus.ingestion.messages import InterbeatIntervalEntry
+from affectus.legacy.wesad import WESAD_FEATURE_NAMES, wesad_feature_vector
 
 ECG_FS = 700
 WINDOW_SEC = 30

@@ -32,11 +32,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import biofizic._bootstrap  # noqa: F401
+import affectus._bootstrap  # noqa: F401
 
-from biofizic.engine.baseline import RestBaselineStore
-from biofizic.engine.pipeline import PhysiologyPipeline
-from biofizic.ingestion.messages import (
+from affectus.engine.baseline import RestBaselineStore
+from affectus.engine.pipeline import PhysiologyPipeline
+from affectus.ingestion.messages import (
     AcquisitionBatchMessage,
     InterbeatIntervalEntry,
 )
@@ -236,7 +236,7 @@ class _InMemoryBaseline(RestBaselineStore):
     def __init__(self) -> None:
         from collections import deque as _deque
 
-        from biofizic.config import BASELINE_ROBUST_WINDOW_EPOCHS
+        from affectus.config import BASELINE_ROBUST_WINDOW_EPOCHS
 
         self._path = Path("/dev/null")
         self._ln_rmssd: deque[float] = _deque(maxlen=BASELINE_ROBUST_WINDOW_EPOCHS)

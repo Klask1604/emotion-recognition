@@ -11,7 +11,7 @@ import math
 
 import numpy as np
 
-from biofizic.engine.channels.respiration_ppg import estimate_respiration_ppg
+from affectus.engine.channels.respiration_ppg import estimate_respiration_ppg
 
 
 def _synth_ppg(

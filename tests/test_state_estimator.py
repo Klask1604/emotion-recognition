@@ -1,6 +1,6 @@
 """Kalman stress-state estimator: quality-weighted smoothing + hold on low quality.
 
-The Kalman lives inside `biofizic.engine.decision` now (consolidated with the
+The Kalman lives inside `affectus.engine.decision` now (consolidated with the
 CUSUM and the population/personal gate). These tests still cover the same
 behaviour by driving the internal `_kalman_update` directly — they remain
 unit tests of the smoother, not of the full pipeline.
@@ -8,7 +8,7 @@ unit tests of the smoother, not of the full pipeline.
 
 from __future__ import annotations
 
-from biofizic.engine.decision import DecisionState, _kalman_update
+from affectus.engine.decision import DecisionState, _kalman_update
 
 
 def test_high_quality_epoch_moves_estimate_more_than_low_quality():

@@ -10,13 +10,13 @@ consecutive ticks have agreed on it. These tests pin that behaviour.
 
 from __future__ import annotations
 
-from biofizic.config import LIVE_AROUSAL_HYSTERESIS_TICKS
-from biofizic.compute_features.results import (
+from affectus.config import LIVE_AROUSAL_HYSTERESIS_TICKS
+from affectus.compute_features.results import (
     MultiWindowResult,
     PhysiologyDecision,
     WindowResult,
 )
-from biofizic.engine.pipeline import PhysiologyPipeline
+from affectus.engine.pipeline import PhysiologyPipeline
 from services.compute_engine import ComputeEngineService
 
 

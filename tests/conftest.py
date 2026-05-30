@@ -1,4 +1,4 @@
-"""Make `biofizic` and `services` importable when pytest runs from anywhere."""
+"""Make `affectus` and `services` importable when pytest runs from anywhere."""
 
 from __future__ import annotations
 

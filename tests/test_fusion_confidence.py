@@ -12,15 +12,15 @@ from pathlib import Path
 
 import pytest
 
-from biofizic.compute_features.results import HrvMetrics, MultiWindowHrvResult
-from biofizic.config import (
+from affectus.compute_features.results import HrvMetrics, MultiWindowHrvResult
+from affectus.config import (
     BASELINE_MIN_REST_SAMPLES,
     HR_CHANNEL_CONFIDENCE,
 )
-from biofizic.engine.decision import DecisionState, decide
-from biofizic.engine.pipeline import PhysiologyPipeline
-from biofizic.engine.signal_quality import SignalQuality
-from biofizic.ingestion.messages import SensorBatchMessage
+from affectus.engine.decision import DecisionState, decide
+from affectus.engine.pipeline import PhysiologyPipeline
+from affectus.engine.signal_quality import SignalQuality
+from affectus.ingestion.messages import SensorBatchMessage
 
 
 def _metrics(rmssd: float = 40.0, si: float = 12.0, hr: float = 80.0) -> HrvMetrics:
@@ -125,7 +125,7 @@ def _cold_pipeline(tmp_path: Path) -> PhysiologyPipeline:
 def test_preliminary_fidelity_pre_baseline(tmp_path: Path):
     """Before baseline lock the verdict comes from Kubios population zones —
     decision must declare itself preliminary so the UI can show a badge."""
-    from biofizic.config import PRELIMINARY_CONFIDENCE_CAP
+    from affectus.config import PRELIMINARY_CONFIDENCE_CAP
 
     pipeline = _cold_pipeline(tmp_path)
     still_q = SignalQuality(

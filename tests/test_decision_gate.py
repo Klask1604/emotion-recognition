@@ -1,6 +1,6 @@
 """Decision gate (population vs personal arousal + CUSUM alert).
 
-The gate logic now lives in `biofizic.engine.decision.decide`. These tests
+The gate logic now lives in `affectus.engine.decision.decide`. These tests
 drive `decide()` directly with synthetic HrvMetrics / SignalQuality / baseline
 states to cover the same behaviours that used to live in `decision_gate.py`.
 """
@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from biofizic.compute_features.results import HrvMetrics, MultiWindowHrvResult
-from biofizic.config import CUSUM_THRESHOLD_H
-from biofizic.engine.baseline import RestBaselineStore
-from biofizic.engine.decision import DecisionState, _cusum_update, decide
-from biofizic.engine.signal_quality import SignalQuality
-from biofizic.ingestion.messages import SensorBatchMessage
+from affectus.compute_features.results import HrvMetrics, MultiWindowHrvResult
+from affectus.config import CUSUM_THRESHOLD_H
+from affectus.engine.baseline import RestBaselineStore
+from affectus.engine.decision import DecisionState, _cusum_update, decide
+from affectus.engine.signal_quality import SignalQuality
+from affectus.ingestion.messages import SensorBatchMessage
 
 
 def _quality(*, q: float = 0.9, motion: str = "still", artifact: float = 0.0) -> SignalQuality:

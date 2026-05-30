@@ -23,10 +23,10 @@ warnings.filterwarnings("ignore")
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from biofizic.legacy.valence_ppg_fd import extract_valence_fd_features  # noqa: E402
-from biofizic.legacy.valence_ppg_morph import (  # noqa: E402
+from affectus.legacy.valence_ppg_fd import extract_valence_fd_features  # noqa: E402
+from affectus.legacy.valence_ppg_morph import (  # noqa: E402
     MORPH_FEATURE_NAMES, extract_morph_features)
-from biofizic.legacy.ppg_hrv_features import (  # noqa: E402
+from affectus.legacy.ppg_hrv_features import (  # noqa: E402
     HRV_FEATURE_NAMES, extract_hrv_features)
 
 FD = ["bf_n", "fhf_n", "shf_n", "fhf_bf", "shf_bf", "shf_fhf"]

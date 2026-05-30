@@ -22,25 +22,25 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import biofizic._bootstrap  # noqa: F401
+import affectus._bootstrap  # noqa: F401
 
 import argparse
 
 import paho.mqtt.client as mqtt
 
-from biofizic.config import (
+from affectus.config import (
     EPOCH_PUBLISH_INTERVAL_SECONDS,
     LIVE_AROUSAL_HYSTERESIS_TICKS,
     PRIMARY_DECISION_WINDOW_SECONDS,
     SKEW_BACKLOG_WARN_SEC,
     WINDOWS_PUBLISH_INTERVAL_SECONDS,
 )
-from biofizic.engine.arousal_mapper import arousal_scale_10_to_label
-from biofizic.engine.pipeline import PhysiologyPipeline
-from biofizic.legacy import LegacyEngines, toggles as legacy_toggles
-from biofizic.ingestion.messages import AcquisitionBatchMessage
-from biofizic.compute_features.results import MultiWindowResult, WindowResult
-from biofizic.compute_features.results import PhysiologyDecision
+from affectus.engine.arousal_mapper import arousal_scale_10_to_label
+from affectus.engine.pipeline import PhysiologyPipeline
+from affectus.legacy import LegacyEngines, toggles as legacy_toggles
+from affectus.ingestion.messages import AcquisitionBatchMessage
+from affectus.compute_features.results import MultiWindowResult, WindowResult
+from affectus.compute_features.results import PhysiologyDecision
 
 logging.basicConfig(
     level=logging.INFO,
