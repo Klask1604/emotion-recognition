@@ -36,12 +36,10 @@ from affectus.config import (
     CHANNEL_HRV_DOMINANT_ABOVE,
     CUSUM_SLACK_K,
     CUSUM_THRESHOLD_H,
-    HR_CHANNEL_CONFIDENCE,
     KALMAN_MEAS_VAR_BASE,
     KALMAN_PROCESS_VAR,
     KALMAN_QUALITY_FLOOR,
     PRELIMINARY_CONFIDENCE_CAP,
-    TEMP_CHANNEL_MAX_WEIGHT,
 )
 from affectus.engine.arousal_mapper import (
     arousal_scale_10_to_label,
@@ -50,10 +48,7 @@ from affectus.engine.arousal_mapper import (
     population_arousal_10,
 )
 from affectus.engine.baseline import RestBaselineStore
-from affectus.engine.channels.temperature import (
-    SkinTemperatureChannelState,
-    evaluate_skin_temperature,
-)
+from affectus.engine.channels.temperature import SkinTemperatureChannelState
 from affectus.engine.signal_quality import SignalQuality
 from affectus.ingestion.messages import SensorBatchMessage
 
@@ -170,6 +165,7 @@ def decide(
     state: DecisionState,
     publish_epoch: bool,
     temperature: "SkinTemperatureChannelState | None" = None,
+    present: "frozenset | None" = None,
 ) -> PhysiologyDecision:
     """One epoch tick: fuse channels, smooth via Kalman, gate the verdict.
 
@@ -193,6 +189,8 @@ def decide(
         else 0.0
     )
     hr_z = baseline.hr_z_score(sdk_hr) if baseline.is_ready else 0.0
+    # Whether the HR channel is meaningful (used below for dominant_channel).
+    hr_present = sdk_hr > 0.0 and baseline.is_ready
 
     # 2) Motion-tolerant fusion: HRV is precise when still, HR is robust in
     # motion. Weight by signal quality so the verdict leans on HR during VR
@@ -201,32 +199,20 @@ def decide(
     # touching this math; with only HRV+HR the result is identical to the prior
     # z_fused = Q·z_hrv + (1-Q)·z_hr.
     hrv_weight = quality.quality
-    hr_present = sdk_hr > 0.0 and baseline.is_ready
-    hr_conf = HR_CHANNEL_CONFIDENCE if hr_present else 0.0
-    channels = [
-        FusionChannel("hrv", z=stress_z, weight=hrv_weight, confidence=quality.quality),
-        FusionChannel("hr", z=hr_z, weight=1.0 - hrv_weight, confidence=hr_conf),
-    ]
-    # Optional skin-temperature channel (secondary arousal proxy). It enters
-    # with weight = confidence · cap, so it is an EXACT no-op until its own
-    # baseline locks and the ambient gate is open (confidence > 0) — which keeps
-    # the HRV+HR-only result identical to before. The cap stops a slow signal
-    # from ever dominating the verdict.
-    temp_z = 0.0
-    temp_confidence = 0.0
-    if temperature is not None and sensor is not None:
-        temp_eval = evaluate_skin_temperature(
-            temperature,
-            skin_temp_c=sensor.skin_temperature_c,
-            ambient_temp_c=sensor.ambient_temperature_c,
-        )
-        temp_z = temp_eval.z
-        temp_confidence = temp_eval.confidence
-        temp_weight = temp_confidence * TEMP_CHANNEL_MAX_WEIGHT
-        if temp_weight > 0.0:
-            channels.append(
-                FusionChannel("temp", z=temp_z, weight=temp_weight, confidence=temp_confidence)
-            )
+    # Channels are assembled by the capability-gated registry. `present` declares
+    # which signals this frame carries; for a wrist frame (IBI+HR+SKIN_TEMP) the
+    # registry yields exactly [hrv, hr, (temp if it contributes)], identical to
+    # the previous inline list. Default to that capability set so existing
+    # callers/tests are unchanged.
+    from affectus.engine.registry import ChannelContext, build_channels
+    from affectus.sensing.capabilities import Capability
+
+    if present is None:
+        present = frozenset({Capability.IBI, Capability.HR, Capability.SKIN_TEMP})
+    channels = build_channels(ChannelContext(
+        primary=primary, sensor=sensor, quality=quality, baseline=baseline,
+        temperature=temperature, present=present,
+    ))
     z_fused, fused_confidence = _fuse(channels)
 
     # 3) Preliminary cap: a pre-baseline verdict comes from the Kubios
