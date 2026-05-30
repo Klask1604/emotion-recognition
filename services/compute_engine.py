@@ -159,6 +159,10 @@ class ComputeEngineService:
             ("biofizic/acquisition/batch", 0),
             ("biofizic/cmd/calibrate", 1),
         ]
+        # Subscribe to the 100 Hz on-demand PPG only when the valence-FD engine
+        # is active, so it can use the higher-resolution stream when available.
+        if getattr(self.legacy, "_valence_fd", None) is not None:
+            topics.append(("biofizic/ppg/ondemand", 0))
         for topic, qos in topics:
             client.subscribe(topic, qos=qos)
         log.info("Compute engine active (acquisition/batch v2)")
@@ -171,6 +175,22 @@ class ComputeEngineService:
 
         topic = msg.topic
         now = time.time()
+
+        if topic == "biofizic/ppg/ondemand":
+            # 100 Hz on-demand PPG, wrapped as {"recv_ms":.., "samples":[{ts,
+            # green,ir,red},..]}. Feed the valence-FD high-rate buffer; never
+            # touches the decision.
+            vfd = getattr(self.legacy, "_valence_fd", None)
+            sample_list = data.get("samples") if isinstance(data, dict) else None
+            if vfd is not None and isinstance(sample_list, list):
+                samples = [
+                    (int(p["ts"]), int(p["green"]))
+                    for p in sample_list
+                    if isinstance(p, dict) and "ts" in p and "green" in p
+                ]
+                if samples:
+                    vfd.ingest_ondemand_ppg(samples)
+            return
 
         if topic == "biofizic/cmd/calibrate":
             # Optional self-reported arousal (0..1) anchors where the new baseline

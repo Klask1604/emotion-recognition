@@ -120,16 +120,17 @@ FLOAT_FIELDS.update({
     ],
     "biofizic/legacy/valence_fd": [
         "bf", "fhf", "shf", "bf_n", "fhf_n", "shf_n",
-        "fhf_bf", "shf_bf", "shf_fhf", "f0_hz",
+        "fhf_bf", "shf_bf", "shf_fhf", "f0_hz", "src_hz",
     ],
 })
 
 ALL_TOPICS = list(FLOAT_FIELDS.keys()) + [
     "biofizic/acquisition/batch",
-    # Cardiac comparator (test_engine): raw PPG @100/25 Hz + derived HR/RMSSD
-    # per source. Wildcards keep the subscribe list tight while topic dispatch
-    # happens in _on_message.
-    "biofizic/test/ppg_ondemand",
+    # 100 Hz on-demand PPG (valence frequency-domain features + raw archive for
+    # DEAP-style offline work). Its own clean topic, separate from the test dumps.
+    "biofizic/ppg/ondemand",
+    # Cardiac comparator (test_engine, opt-in): raw PPG @100/25 Hz + derived
+    # HR/RMSSD per source. Dispatch in _on_message routes by leaf topic name.
     "biofizic/test/ppg_continuous",
     # Covers both the lightweight comparator (ppg_ondemand / ppg_continuous /
     # hr_continuous) AND the full PPG-only PhysiologyPipeline output
@@ -173,12 +174,12 @@ SEED_MEASUREMENTS: dict[str, list[str]] = {
     ],
     "biofizic_legacy_valence_fd": [
         "bf", "fhf", "shf", "bf_n", "fhf_n", "shf_n",
-        "fhf_bf", "shf_bf", "shf_fhf", "f0_hz",
+        "fhf_bf", "shf_bf", "shf_fhf", "f0_hz", "src_hz",
     ],
     "biofizic_all_data_live": ["ppg_green", "ppg_ir", "ibi_ms", "ppg_peak"],
     # Cardiac comparator (test_engine + raw PPG sources). Seeded so Grafana
     # shows "No data" instead of "table not found" before the first publish.
-    "biofizic_test_ppg_ondemand": ["green", "ir", "red"],
+    "biofizic_ppg_ondemand": ["green", "ir", "red"],
     "biofizic_test_ppg_continuous": ["green", "ir", "red"],
     "biofizic_test_derived": [
         "hr_bpm", "rmssd_ms", "sdnn_ms", "ibi_count",
@@ -596,8 +597,8 @@ class MqttInfluxLogger:
         elif topic == "biofizic/legacy/ppg":
             # Overlay the detected PPG peaks on the raw wave dashboard.
             self._write_ppg_peaks(data)
-        elif topic == "biofizic/test/ppg_ondemand":
-            self._write_test_ppg_raw("biofizic_test_ppg_ondemand", data)
+        elif topic == "biofizic/ppg/ondemand":
+            self._write_test_ppg_raw("biofizic_ppg_ondemand", data)
             return
         elif topic == "biofizic/test/ppg_continuous":
             self._write_test_ppg_raw("biofizic_test_ppg_continuous", data)

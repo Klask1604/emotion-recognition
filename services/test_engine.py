@@ -64,7 +64,7 @@ WINDOW_SEC = 30
 PUBLISH_INTERVAL_SEC = 1.0
 
 # Topic mapping (watch publishes these when PUBLISH_TEST_DUMP=true).
-TOPIC_PPG_OND = "biofizic/test/ppg_ondemand"
+TOPIC_PPG_OND = "biofizic/ppg/ondemand"
 TOPIC_PPG_CONT = "biofizic/test/ppg_continuous"
 TOPIC_HR_CONT = "biofizic/test/heart_rate_continuous"
 # Re-used for motion + temperature in the PPG-only pipelines. Subscribing here

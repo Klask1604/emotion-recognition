@@ -30,10 +30,11 @@ ENABLE_PPG_PEAKS = True
 # OFF: avoids the model-file dependency; it is a documented negative result we
 # can enable later if models/wesad_rf.joblib is present on the host.
 ENABLE_WESAD = False
-# Ad-hoc valence heuristic (documented negative result; needs raw-PPG PPA).
-# ON: collect valence-heuristic output to demonstrate, with data, how poorly it
-# correlates — the negative result. Never feeds biofizic/state.
-ENABLE_VALENCE = True
+# Ad-hoc valence heuristic — SUPERSEDED by the PPG frequency-domain method
+# (ENABLE_VALENCE_FD). Kept OFF as an archived negative result; the invented
+# 0.55/0.35 coefficients have no literature basis. Re-enable only to reproduce
+# the old comparison.
+ENABLE_VALENCE = False
 # Respiration comparator: RSA-from-IBI vs PPG-amplitude, side by side, on
 # biofizic/legacy/resp. Research-only; decides which (if any) source is reliable
 # enough to fuse later. Needs raw PPG on the watch for the PPG arm (RSA arm
