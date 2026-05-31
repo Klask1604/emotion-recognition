@@ -291,6 +291,9 @@ class ComputeEngineService:
             # finger-hold calibration; the server detects R-peaks -> IBI ->
             # baseline. Enhancement over PPG; PPG resting stays as fallback.
             ("biofizic/ecg/calibrate", 0),
+            # User emotion feedback (a Russell quadrant tap). QoS 1 so a label is
+            # never silently dropped — each one is a hand-collected training pair.
+            ("biofizic/cmd/feedback", 1),
         ]
         # Subscribe to the 100 Hz on-demand PPG when ANY valence engine that uses
         # the high-rate waveform is active, so each gets the sharp stream instead
@@ -388,6 +391,10 @@ class ComputeEngineService:
                 "Recalibrare… stai liniștit 1–2 min",
                 phase="collecting",
             )
+            return
+
+        if topic == "biofizic/cmd/feedback":
+            self._handle_feedback(client, data, now)
             return
 
         if topic == "biofizic/acquisition/batch":
@@ -596,6 +603,55 @@ class ComputeEngineService:
             self._enrich_valence(out.valence_case, self.pipeline.valence_baseline_case,
                                  self.pipeline.valence_smoother_case, result)
             client.publish("biofizic/legacy/valence_case", json.dumps({"ts": ts, **out.valence_case}), qos=0)
+
+        # Cache the three models' predictions + the live arousal z at this instant,
+        # so a feedback tap can pair the user's label with what each model said
+        # right then (the model-vs-truth validation). Cheap, overwritten each batch.
+        self._last_pred = {
+            "wesad": (out.valence_wesad or {}).get("p_positive"),
+            "eevr": (out.valence_eevr or {}).get("p_positive"),
+            "case": (out.valence_case or {}).get("p_positive"),
+            "arousal_z": (
+                result.decision.stress_index_z_filtered
+                if result is not None and result.decision is not None else None
+            ),
+            "ts": int(ts),
+        }
+
+    def _handle_feedback(self, client, data, now) -> None:
+        """A feedback tap: pair the user's chosen Russell quadrant with the latest
+        33-feature PPG vector + what the three models predicted, and append it to
+        data/feedback_labels.jsonl. Re-publish a summary for the Grafana dashboard."""
+        from affectus.shared.feedback_store import QUADRANTS, append_feedback
+
+        quadrant = data.get("quadrant")
+        if quadrant not in QUADRANTS:
+            log.warning("feedback ignored: bad quadrant %r", quadrant)
+            return
+        eng = getattr(self.legacy, "_valence_wesad", None)
+        features = getattr(eng, "last_features", None) if eng is not None else None
+        feat_ts = getattr(eng, "last_features_ts", 0) if eng is not None else 0
+        # Feature freshness: how old is the labelled window vs the tap.
+        tap_ms = data.get("ts") if isinstance(data.get("ts"), (int, float)) else now * 1000
+        age_s = (float(tap_ms) - feat_ts) / 1000.0 if feat_ts else None
+        preds = getattr(self, "_last_pred", {}) or {}
+        row = append_feedback(
+            quadrant, features,
+            arousal_z=preds.get("arousal_z"),
+            features_age_s=age_s,
+            preds=preds,
+        )
+        log.info("Feedback stored: %s (n_features=%d, age=%.1fs)",
+                 quadrant, row["n_features"], age_s or -1.0)
+        # Summary for Influx/Grafana (NOT the 33 features — those stay in the JSONL).
+        client.publish("biofizic/legacy/feedback", json.dumps({
+            "ts": row["ts"],
+            "quadrant_code": row["quadrant_code"],
+            "arousal_z": row["arousal_z"],
+            "wesad_p": row["wesad_p_positive"],
+            "eevr_p": row["eevr_p_positive"],
+            "case_p": row["case_p_positive"],
+        }), qos=0)
 
     @staticmethod
     def _window_payload(window: WindowResult) -> dict:

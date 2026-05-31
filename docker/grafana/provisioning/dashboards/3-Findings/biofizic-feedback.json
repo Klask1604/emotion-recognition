@@ -1,0 +1,76 @@
+{
+  "id": null,
+  "uid": "biofizic-feedback",
+  "title": "Finding — User feedback (model vs your truth)",
+  "tags": ["biofizic", "feedback", "validation"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-7d", "to": "now" },
+  "panels": [
+    {
+      "id": 100,
+      "title": "READ ME",
+      "type": "text",
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Your own emotion labels vs what the 3 models predicted at that moment.** Each row = one time you tapped the feedback button and picked a quadrant (Bucuros/Calm/Trist/Stresat). The server paired it with the live PPG and what WESAD/EEVR/CASE said.\n\n- **quadrant_code**: 1=Calm · 2=Trist · 3=Bucuros · 4=Stresat. Positive valence = Bucuros/Calm (codes 1,3).\n- **wesad_p / eevr_p / case_p**: each model's P(positive valence). >0.5 = it bet 'pleasant'.\n- **arousal_z**: your measured arousal at that moment (the axis that WORKS).\n\nWatch whether any model's p tracks your actual pleasant/unpleasant labels. The 33 PPG features per label are banked in `data/feedback_labels.jsonl`. Run `train/feedback_validate.py` for the accuracy numbers. At ~20-30 varied labels, Phase B tests a personal model."
+      }
+    },
+    {
+      "id": 1,
+      "title": "Your labels vs the models (latest first)",
+      "type": "table",
+      "gridPos": { "h": 13, "w": 24, "x": 0, "y": 5 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A", "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code", "format": "table", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT time, CASE quadrant_code WHEN 1 THEN 'Calm' WHEN 2 THEN 'Trist' WHEN 3 THEN 'Bucuros' WHEN 4 THEN 'Stresat' ELSE '?' END AS \"YOUR label\", round(arousal_z,2) AS \"arousal_z\", round(wesad_p,2) AS \"WESAD p\", round(eevr_p,2) AS \"EEVR p\", round(case_p,2) AS \"CASE p\" FROM biofizic_legacy_feedback WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 100"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "YOUR label" }, "properties": [ { "id": "custom.width", "value": 110 } ] }
+        ]
+      },
+      "options": { "showHeader": true }
+    },
+    {
+      "id": 2,
+      "title": "Labels collected per quadrant (need variety for Phase B)",
+      "type": "barchart",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 18 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A", "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code", "format": "table", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT CASE quadrant_code WHEN 1 THEN 'Calm' WHEN 2 THEN 'Trist' WHEN 3 THEN 'Bucuros' WHEN 4 THEN 'Stresat' ELSE '?' END AS quadrant, count(*) AS n FROM biofizic_legacy_feedback WHERE $__timeFilter(time) GROUP BY quadrant_code ORDER BY quadrant_code"
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 80 } } },
+      "options": { "orientation": "horizontal", "showValue": "always", "legend": { "showLegend": false } }
+    },
+    {
+      "id": 3,
+      "title": "Total labels banked",
+      "type": "stat",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 18 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A", "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code", "format": "table", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT count(*) AS labels FROM biofizic_legacy_feedback WHERE $__timeFilter(time)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 10 }, { "color": "green", "value": 25 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "textMode": "value_and_name", "colorMode": "background", "graphMode": "none" }
+    }
+  ]
+}

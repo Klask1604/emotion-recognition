@@ -41,6 +41,11 @@ class ValenceWesadEngine:
             )
         self._ppg: deque[tuple[int, int]] = deque()      # 25 Hz from batch
         self._ppg_hi: deque[tuple[int, int]] = deque()   # 100 Hz on-demand
+        # The most recent 33-feature PPG vector this engine extracted, kept so the
+        # feedback handler can pair the user's label with the exact features the
+        # models saw — without re-extracting. (None until the first valid window.)
+        self.last_features: list[float] | None = None
+        self.last_features_ts: int = 0
 
     def _trim(self, buf: deque, now_ms: int) -> None:
         cutoff = now_ms - _PPG_WINDOW_MS
@@ -76,6 +81,9 @@ class ValenceWesadEngine:
         vec = extract_valence_feature_vector(green, ts)
         if vec is None:
             return None
+        # Retain for the feedback handler (the window the user is feeling now).
+        self.last_features = vec
+        self.last_features_ts = now_ms
         x = (np.asarray(vec, dtype=float) - self._state.feature_mean) / self._state.feature_std
         try:
             proba = self._state.model.predict_proba(x.reshape(1, -1))[0]

@@ -151,6 +151,12 @@ FLOAT_FIELDS.update({
         "valence_personal", "valence_personal_60s", "valence_deadband",
         "neutral_valence_z", "valence_baseline_ready",
     ],
+    # User emotion feedback summary (one row per tap). The 33 features stay in
+    # data/feedback_labels.jsonl; Influx holds only the label + each model's
+    # prediction so the dashboard can show model-vs-truth.
+    "biofizic/legacy/feedback": [
+        "quadrant_code", "arousal_z", "wesad_p", "eevr_p", "case_p",
+    ],
 })
 
 ALL_TOPICS = list(FLOAT_FIELDS.keys()) + [
@@ -219,6 +225,9 @@ SEED_MEASUREMENTS: dict[str, list[str]] = {
         "p_positive", "valence_z", "confidence", "src_hz",
         "valence_personal", "valence_personal_60s", "valence_deadband",
         "neutral_valence_z", "valence_baseline_ready",
+    ],
+    "biofizic_legacy_feedback": [
+        "quadrant_code", "arousal_z", "wesad_p", "eevr_p", "case_p",
     ],
     "biofizic_all_data_live": ["ppg_green", "ppg_ir", "ibi_ms", "ppg_peak"],
     # Cardiac comparator (test_engine + raw PPG sources). Seeded so Grafana
