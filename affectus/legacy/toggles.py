@@ -47,6 +47,12 @@ ENABLE_RESPIRATION_COMPARE = True
 # biofizic/legacy/valence_fd. Features only, no verdict; for the thesis
 # demonstration + future classifier training. Needs raw PPG. Never feeds state.
 ENABLE_VALENCE_FD = True
+# WESAD-trained valence model (stress vs amusement, ~85% LOSO) run as an
+# OBSERVED-ONLY research engine on biofizic/legacy/valence_wesad. Same model and
+# extractor as the production channel, but logged side-by-side with the verdict
+# to judge cross-device transfer to the watch BEFORE it is trusted in the
+# decision. Needs raw PPG + models/valence_wesad.joblib. Never feeds state.
+ENABLE_VALENCE_WESAD = True
 
 
 def any_enabled() -> bool:
@@ -57,4 +63,5 @@ def any_enabled() -> bool:
         or ENABLE_VALENCE
         or ENABLE_RESPIRATION_COMPARE
         or ENABLE_VALENCE_FD
+        or ENABLE_VALENCE_WESAD
     )

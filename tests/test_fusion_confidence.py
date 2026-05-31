@@ -12,14 +12,14 @@ from pathlib import Path
 
 import pytest
 
-from affectus.compute_features.results import HrvMetrics, MultiWindowHrvResult
+from affectus.shared.hrv.results import HrvMetrics, MultiWindowHrvResult
 from affectus.config import (
     BASELINE_MIN_REST_SAMPLES,
     HR_CHANNEL_CONFIDENCE,
 )
 from affectus.engine.decision import DecisionState, decide
 from affectus.engine.pipeline import PhysiologyPipeline
-from affectus.engine.signal_quality import SignalQuality
+from affectus.shared.signal_quality import SignalQuality
 from affectus.ingestion.messages import SensorBatchMessage
 
 

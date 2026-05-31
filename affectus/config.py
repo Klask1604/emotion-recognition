@@ -68,6 +68,20 @@ PPG_MIN_BEAT_DISTANCE_S = 0.3
 PPG_ANALYSIS_WINDOW_S = 8.0
 PPG_PPA_BASELINE_WINDOW = 60
 
+# ECG R-peak detection (calibration only). The Galaxy Watch Lead-I ECG (finger on
+# the button) gives a clean QRS; we band-pass to the QRS energy band, square the
+# derivative (the Pan-Tompkins energy step), and find_peaks. Used ONLY during
+# calibration to build a gold-standard HRV baseline (see shared/dsp/ecg_peaks.py).
+ECG_BAND_LO_HZ = 5.0
+ECG_BAND_HI_HZ = 15.0
+ECG_MIN_SAMPLES = 128
+# 250 ms == 240 bpm ceiling between R-peaks.
+ECG_MIN_BEAT_DISTANCE_S = 0.25
+# Physiological IBI window: 300 ms (200 bpm) .. 2000 ms (30 bpm). R-R outside this
+# is a missed/extra beat and is dropped so it can't corrupt the baseline.
+ECG_IBI_MIN_MS = 300
+ECG_IBI_MAX_MS = 2000
+
 # PPG frequency-domain valence features (replication of Frontiers Physiol. 2025,
 # PMC11893849), adapted to consumer PPG. Works at any sample rate (25 Hz
 # continuous or 100 Hz on-demand); fs is derived from timestamps. See
@@ -395,3 +409,37 @@ def temp_baseline_path() -> Path:
     """Skin-temperature channel baseline, kept separate from the HRV baseline
     file so adding the channel never risks the existing rest_baseline.json."""
     return data_dir() / "temp_baseline.json"
+
+
+def valence_baseline_path() -> Path:
+    """Valence-channel personal baseline, kept in its own file (never touches the
+    HRV baseline). Recenters the cross-device WESAD model on the subject's own
+    resting valence so the neutral point is measured, not assumed to be 0."""
+    return data_dir() / "valence_baseline.json"
+
+
+# Valence personal-baseline sigma floor (linear valence_z units, not log). Keeps
+# the personal z finite when a subject's resting valence is very stable; chosen
+# as a small fraction of the [-1,1] valence_z range, mirroring TEMP_SIGMA_FLOOR_C
+# for the other linear channel. Not a magic threshold — it only prevents
+# divide-by-near-zero, the actual scale comes from the measured MAD.
+VALENCE_SIGMA_FLOOR = 0.05
+
+
+def reactivity_profile_path() -> Path:
+    """One-time subject reactivity/expressiveness profile (low/normal/high). It
+    scales the valence dead-band: a low-responder's real-but-small valence
+    excursions should still register, so they get a narrower neutral zone."""
+    return data_dir() / "reactivity_profile.json"
+
+
+# Valence dead-band scaling by self-reported reactivity. A low-responder has
+# small absolute valence swings (already normalised by their own MAD, but a fixed
+# personal-z dead-band would still swallow their proportionally-real excursions),
+# so a NARROWER neutral zone keeps their emotion legible; a very expressive (and
+# noisier) subject gets a WIDER zone so transients don't flip the verdict.
+REACTIVITY_DEADBAND_SCALE = {
+    "low": 0.6,
+    "normal": 1.0,
+    "high": 1.4,
+}

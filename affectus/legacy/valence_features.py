@@ -42,6 +42,35 @@ VALENCE_FEATURE_NAMES = (
 )
 
 
+def normalize_ppg_window(green: list[int]) -> list[float]:
+    """Scale-invariant PPG normalization, applied identically in training and
+    serving so the model sees the same units regardless of device.
+
+    The raw optical signal differs by orders of magnitude across sensors:
+    Empatica E4 BVP is AC-coupled (mean ~0, |amplitude| ~tens), Galaxy Watch PPG
+    is DC-coupled (mean ~65000). Amplitude/area/slope/DC features therefore land
+    in wildly different ranges, and a model trained on one device saturates on
+    the other (the WESAD model collapsed to a constant on the watch).
+
+    Centering by the median and dividing by a robust scale (MAD) removes the DC
+    offset and the gain difference, mapping every device onto the same
+    dimensionless pulse shape. Ratio/time features are unaffected; absolute
+    amplitude/area/slope features become comparable. Returns the raw signal
+    unchanged if it is too short or flat (no usable scale)."""
+    import numpy as np
+
+    sig = np.asarray(green, dtype=float)
+    if sig.size < 8:
+        return [float(v) for v in green]
+    center = float(np.median(sig))
+    mad = float(np.median(np.abs(sig - center)))
+    scale = 1.4826 * mad  # robust sigma estimate
+    if scale <= 0:
+        std = float(np.std(sig))
+        scale = std if std > 0 else 1.0
+    return ((sig - center) / scale).tolist()
+
+
 def _estimate_hr(green: list[int], fs: float) -> float:
     sig = np.asarray(green, dtype=float)
     sig = sig - sig.mean()
@@ -68,14 +97,17 @@ def extract_valence_feature_vector(
     if span_s <= 0:
         return None
     fs = (n - 1) / span_s
-    hr = _estimate_hr(green, fs)
+    # Scale-invariant normalization FIRST, so every amplitude/area/slope feature
+    # is in device-independent units (train/serve parity across Empatica/Watch).
+    g = normalize_ppg_window(green)
+    hr = _estimate_hr(g, fs)
     if hr <= 0:
         return None
 
-    vasc = extract_vascular_features(green, timestamps_ms)
-    fd = extract_valence_fd_features(green, timestamps_ms, hr_bpm=hr)
-    morph = extract_morph_features(green, timestamps_ms)
-    hrv = extract_hrv_features(green, timestamps_ms)
+    vasc = extract_vascular_features(g, timestamps_ms)
+    fd = extract_valence_fd_features(g, timestamps_ms, hr_bpm=hr)
+    morph = extract_morph_features(g, timestamps_ms)
+    hrv = extract_hrv_features(g, timestamps_ms)
     if not (vasc.valid and fd.valid and morph.valid and hrv.valid):
         return None
 

@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from affectus.sensing.capabilities import (
-    Capability,
-    DeviceCapabilities,
-    SensorFrame,
-)
+from affectus.contract.capabilities import Capability, DeviceCapabilities
+from affectus.contract.frame import SensorFrame
 
 
 def test_has_and_has_all():

@@ -10,7 +10,7 @@ A blank line separates consecutive blocks.
 
 from __future__ import annotations
 
-from affectus.compute_features.results import MultiWindowHrvResult, PhysiologyDecision
+from affectus.shared.hrv.results import MultiWindowHrvResult, PhysiologyDecision
 from affectus.config import ARTIFACT_RATE_MAX
 
 

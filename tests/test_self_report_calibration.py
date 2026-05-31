@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from affectus.engine.arousal_mapper import normal_cdf, normal_ppf, personal_arousal_10
-from affectus.engine.baseline import RestBaselineStore
+from affectus.shared.arousal_mapper import normal_cdf, normal_ppf, personal_arousal_10
+from affectus.shared.baseline import RestBaselineStore
 
 
 def test_probit_is_cdf_inverse():

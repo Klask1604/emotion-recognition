@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from affectus.config import ARTIFACT_RATE_MAX
-from affectus.engine.signal_quality import (
+from affectus.shared.signal_quality import (
     SignalQualityState,
     update_and_score,
 )

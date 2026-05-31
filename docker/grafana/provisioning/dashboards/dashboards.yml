@@ -3,7 +3,6 @@ apiVersion: 1
 providers:
   - name: Biofizic
     orgId: 1
-    folder: Biofizic
     type: file
     # false => dashboards whose JSON file is removed get pruned on restart,
     # so the provisioned folder is authoritative (no stale leftovers).
@@ -12,4 +11,7 @@ providers:
     allowUiUpdates: false
     options:
       path: /etc/grafana/provisioning/dashboards
-      foldersFromFilesStructure: false
+      # Build Grafana folders from the subdirectory structure: dashboards are
+      # grouped into 1-Visualize / 2-Compare / 3-Findings / 4-Diagnostic by
+      # PURPOSE (view data / compare sources / prove a thesis point / ops debug).
+      foldersFromFilesStructure: true

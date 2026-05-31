@@ -22,6 +22,7 @@ class LegacyOutputs:
     valence: dict | None = None   # {"valence": float, "ppa_z": float}
     respiration: dict | None = None  # {"rsa_bpm", "ppg_bpm", confidences, ...}
     valence_fd: dict | None = None   # PPG frequency-domain features (9)
+    valence_wesad: dict | None = None  # {"p_positive", "valence_z", confidence}
 
     def is_empty(self) -> bool:
         return (
@@ -30,6 +31,7 @@ class LegacyOutputs:
             and self.valence is None
             and self.respiration is None
             and self.valence_fd is None
+            and self.valence_wesad is None
         )
 
 
@@ -42,6 +44,7 @@ class LegacyEngines:
         self._valence = None
         self._respiration = None
         self._valence_fd = None
+        self._valence_wesad = None
         if toggles.ENABLE_RESPIRATION_COMPARE:
             from affectus.legacy.respiration_compare import RespirationCompareEngine
 
@@ -50,6 +53,18 @@ class LegacyEngines:
             from affectus.legacy.valence_fd_engine import ValenceFdEngine
 
             self._valence_fd = ValenceFdEngine()
+        if toggles.ENABLE_VALENCE_WESAD:
+            from affectus.legacy.valence_wesad_engine import ValenceWesadEngine
+
+            try:
+                self._valence_wesad = ValenceWesadEngine()
+            except FileNotFoundError as exc:
+                # Toggle on but model not trained yet: skip gracefully (don't
+                # crash the service) until models/valence_wesad.joblib exists.
+                import logging
+
+                logging.getLogger("legacy").warning("valence_wesad disabled: %s", exc)
+                self._valence_wesad = None
 
         if toggles.ENABLE_RAW_PPG or toggles.ENABLE_PPG_PEAKS or toggles.ENABLE_VALENCE:
             from affectus.legacy.raw_ppg import RawPpgEngine
@@ -74,7 +89,8 @@ class LegacyEngines:
 
     @property
     def active(self) -> bool:
-        return any((self._ppg, self._wesad, self._valence, self._respiration, self._valence_fd))
+        return any((self._ppg, self._wesad, self._valence, self._respiration,
+                    self._valence_fd, self._valence_wesad))
 
     def run(self, *, batch, result, baseline) -> LegacyOutputs:
         """Run the enabled engines for one epoch. `batch` is the parsed
@@ -106,7 +122,12 @@ class LegacyEngines:
         if self._valence_fd is not None:
             valence_fd_out = self._valence_fd.compute(batch)
 
+        valence_wesad_out = None
+        if self._valence_wesad is not None:
+            valence_wesad_out = self._valence_wesad.compute(batch)
+
         return LegacyOutputs(
             ppg=ppg_out, wesad=wesad_out, valence=valence_out,
             respiration=respiration_out, valence_fd=valence_fd_out,
+            valence_wesad=valence_wesad_out,
         )

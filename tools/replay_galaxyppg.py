@@ -34,7 +34,7 @@ if str(ROOT) not in sys.path:
 
 import affectus._bootstrap  # noqa: F401
 
-from affectus.engine.baseline import RestBaselineStore
+from affectus.shared.baseline import RestBaselineStore
 from affectus.engine.pipeline import PhysiologyPipeline
 from affectus.ingestion.messages import (
     AcquisitionBatchMessage,

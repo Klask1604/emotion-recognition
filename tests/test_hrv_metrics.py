@@ -6,7 +6,7 @@ import math
 
 import numpy as np
 
-from affectus.compute_features.hrv_metrics import (
+from affectus.shared.hrv.metrics import (
     compute_baevsky_indices,
     compute_hrv_from_entries,
 )

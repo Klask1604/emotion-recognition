@@ -15,7 +15,7 @@ def test_legacy_output_never_enters_production_decision():
     # biofizic/legacy/* via LegacyOutputs — it must never appear as a field on
     # the production PhysiologyDecision that drives VR.
     from dataclasses import fields
-    from affectus.compute_features.results import PhysiologyDecision
+    from affectus.shared.hrv.results import PhysiologyDecision
 
     decision_fields = {f.name for f in fields(PhysiologyDecision)}
     for leaked in ("p_stress", "valence", "respiration", "rsa_bpm", "ppg_bpm"):
@@ -28,6 +28,7 @@ def test_legacy_engines_inactive_when_all_toggles_off(monkeypatch):
     for flag in (
         "ENABLE_RAW_PPG", "ENABLE_PPG_PEAKS", "ENABLE_WESAD",
         "ENABLE_VALENCE", "ENABLE_RESPIRATION_COMPARE", "ENABLE_VALENCE_FD",
+        "ENABLE_VALENCE_WESAD",
     ):
         monkeypatch.setattr(toggles, flag, False)
     eng = LegacyEngines()

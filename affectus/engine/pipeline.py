@@ -6,12 +6,14 @@ import logging
 import time
 from dataclasses import dataclass
 
-from affectus.engine.baseline import RestBaselineStore
-from affectus.engine.channels.temperature import SkinTemperatureChannelState
+from affectus.shared.baseline import RestBaselineStore
+from affectus.shared.valence_baseline import ValenceBaselineStore, ValenceSmoother
+from affectus.shared.reactivity import ReactivityProfile
+from affectus.devices.wrist.modules.temperature import SkinTemperatureChannelState
 from affectus.engine.decision import DecisionState, decide
-from affectus.engine.signal_quality import SignalQualityState, update_and_score
+from affectus.shared.signal_quality import SignalQualityState, update_and_score
 from affectus.logging import format_decision_block
-from affectus.compute_features.results import (
+from affectus.shared.hrv.results import (
     HrvMetrics,
     MultiWindowHrvResult,
     MultiWindowResult,
@@ -28,7 +30,7 @@ from affectus.config import (
     MIN_BEATS_FOR_ANY_HRV,
     PRIMARY_DECISION_WINDOW_SECONDS,
 )
-from affectus.compute_features.windows import MultiWindowProcessor, RollingIbiBuffer, RollingSensorBuffer
+from affectus.shared.hrv.windows import MultiWindowProcessor, RollingIbiBuffer, RollingSensorBuffer
 
 log = logging.getLogger("physiology_pipeline")
 
@@ -63,6 +65,25 @@ class PhysiologyPipeline:
         # never touches rest_baseline.json. Resting samples feed it on the same
         # quality gate as the HRV baseline.
         self.temperature = SkinTemperatureChannelState(persist=True)
+        # Personal valence baseline: recenters the cross-device WESAD model on
+        # this subject (neutral = measured resting median, not assumed 0). Fed by
+        # the compute service on the same resting gate as the HRV baseline.
+        self.valence_baseline = ValenceBaselineStore(persist=True)
+        # 60 s rolling mean of personal valence: reports the background emotional
+        # state (mood) rather than each noisy 1 s epoch. Matched to the arousal
+        # decision window (w60) so the circumplex has uniform inertia on both axes.
+        self.valence_smoother = ValenceSmoother(window_s=60.0)
+        # One-time subject reactivity profile: scales the valence dead-band.
+        self.reactivity = ReactivityProfile(persist=True)
+        # While an ECG calibration is in progress, PPG must NOT lock the baseline
+        # (it would win the race before the user puts their finger on the button).
+        # 0 = no ECG window; otherwise the epoch-clock deadline past which PPG
+        # takes over as fallback. Set by the compute service.
+        self.ecg_calibration_until: float = 0.0
+        # ECG calibration beats accumulated this hold. HRV is computed directly
+        # from these (no 60 s rolling window), so the baseline can lock within the
+        # 45 s finger-hold instead of waiting for a full window to fill.
+        self._ecg_cal_beats: list = []
         self.quality_state = SignalQualityState()
         self.decision_state = DecisionState()
         self.state = PipelineState()
@@ -70,10 +91,48 @@ class PhysiologyPipeline:
     def ingest_ibi_batch(self, batch: IbiBatchMessage) -> None:
         self.ibi_buffer.ingest_batch(batch)
 
+    def reset_ecg_calibration(self) -> None:
+        """Clear the accumulated ECG beats at the start of a new finger-hold."""
+        self._ecg_cal_beats = []
+
+    def ingest_ecg_calibration(self, batch: IbiBatchMessage, *, now: float) -> bool:
+        """Feed ECG-derived IBI into the arousal baseline during calibration.
+
+        HRV is computed DIRECTLY from the ECG beats accumulated this hold (no 60 s
+        rolling window), so the baseline locks within the 45 s finger-hold rather
+        than waiting for a full HRV window to fill. ECG (a deliberate finger-hold)
+        is motion-immune and the subject is still by definition, so this BYPASSES
+        the motion/quality gate the PPG path needs. The 1 s spacing gate inside
+        observe_resting is kept (pass `now`) so the locked baseline's MAD stays
+        meaningful: a sample is accepted ~once per real second of contact, 8 of
+        them lock it in ~8 s. Returns whether the baseline has locked."""
+        from affectus.shared.hrv.metrics import compute_hrv_from_entries
+        from affectus.ingestion.messages import InterbeatIntervalEntry
+
+        for ms, ts in zip(batch.intervals_ms, batch.timestamps_ms):
+            self._ecg_cal_beats.append(InterbeatIntervalEntry(interval_ms=ms, timestamp_ms=ts))
+        # Keep a bounded recent window of beats so the HRV stats reflect the hold,
+        # not stale data (a comfortable ~90 s of beats at any heart rate).
+        if len(self._ecg_cal_beats) > 200:
+            self._ecg_cal_beats = self._ecg_cal_beats[-200:]
+        if len(self._ecg_cal_beats) < MIN_BEATS_FOR_ANY_HRV:
+            return self.baseline.is_ready
+        hrv = compute_hrv_from_entries(self._ecg_cal_beats)
+        if hrv is None or hrv.kubios_stress_index <= 0 or hrv.rmssd_ms <= 0:
+            return self.baseline.is_ready
+        self.baseline.observe_resting(
+            hrv.rmssd_ms,
+            hrv.kubios_stress_index,
+            heart_rate_bpm=hrv.mean_heart_rate_bpm,
+            now=now,
+            min_spacing_s=1.0,
+        )
+        return self.baseline.is_ready
+
     def ingest_acquisition(self, batch: AcquisitionBatchMessage) -> None:
         """Atomic ingest of a v2 watch batch. Wraps it into a device-agnostic
         SensorFrame and delegates, so every wearable enters through one path."""
-        from affectus.sensing.adapters.schema_v2 import frame_from_acquisition_v2
+        from affectus.devices.wrist.adapter import frame_from_acquisition_v2
 
         self.ingest_frame(frame_from_acquisition_v2(batch))
 
@@ -81,7 +140,7 @@ class PhysiologyPipeline:
         """Capability-agnostic ingest: route the canonical slots of any frame
         into the rolling buffers. Only signals the frame actually carries are
         ingested (e.g. no MOTION capability -> motion buffer untouched)."""
-        from affectus.sensing.capabilities import Capability
+        from affectus.contract.capabilities import Capability
 
         if frame.has(Capability.IBI) and frame.ibi is not None:
             self.ingest_ibi_batch(frame.ibi)
@@ -172,8 +231,13 @@ class PhysiologyPipeline:
         sdk_hr = sensor.heart_rate_bpm if sensor else 0.0
 
         # Lock / update the personal baseline only on high-quality resting epochs.
+        # During an active ECG-calibration window, PPG is suppressed so the clean
+        # ECG IBI builds the baseline (PPG would otherwise lock it first). Past the
+        # window deadline (user never held the finger), PPG resumes as fallback.
+        ecg_window_active = now_ts < self.ecg_calibration_until
         if (
-            quality.usable
+            not ecg_window_active
+            and quality.usable
             and quality.motion_state == "still"
             and primary is not None
             and primary.beat_count >= MIN_BEATS_FOR_ANY_HRV
@@ -237,7 +301,21 @@ class PhysiologyPipeline:
             baseline_ready=self.baseline.is_ready,
         )
 
-    def reset_baseline(self, reported_arousal: float | None = None) -> None:
+    def reset_baseline(
+        self,
+        reported_arousal: float | None = None,
+        reported_valence: float | None = None,
+        reactivity: str | None = None,
+    ) -> None:
         self.baseline.reset_for_recalibration(reported_arousal)
         self.temperature.reset()
         self.decision_state.reset()
+        # Recalibration must also re-anchor valence: the personal neutral and the
+        # smoother are subject/session-specific, so a recalibrate re-measures them
+        # from the new resting epochs (otherwise valence stays on the old neutral).
+        # reported_valence feeds the polarity sign-guard (does not move neutral).
+        self.valence_baseline.reset_for_recalibration(reported_valence)
+        self.valence_smoother.reset()
+        # Reactivity is a one-time subject profile; set only when the watch sends it.
+        if reactivity is not None:
+            self.reactivity.set(reactivity)

@@ -3,12 +3,12 @@ capabilities are present, and the wrist set reproduces the prior [hrv,hr,temp]."
 
 from __future__ import annotations
 
-from affectus.engine.registry import ChannelContext, build_channels
-from affectus.sensing.capabilities import Capability
-from affectus.engine.signal_quality import SignalQuality
-from affectus.engine.channels.temperature import SkinTemperatureChannelState
-from affectus.engine.baseline import RestBaselineStore
-from affectus.compute_features.results import HrvMetrics
+from affectus.devices.registry import ChannelContext, build_channels
+from affectus.contract.capabilities import Capability
+from affectus.shared.signal_quality import SignalQuality
+from affectus.devices.wrist.modules.temperature import SkinTemperatureChannelState
+from affectus.shared.baseline import RestBaselineStore
+from affectus.shared.hrv.results import HrvMetrics
 from affectus.ingestion.messages import SensorBatchMessage
 
 

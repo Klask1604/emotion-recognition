@@ -1,0 +1,136 @@
+{
+  "id": null,
+  "uid": "biofizic-circumplex",
+  "title": "Finding — Emotion Circumplex (arousal × calibrated valence)",
+  "tags": ["biofizic", "circumplex", "emotion"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 3,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 10,
+      "title": "READ ME",
+      "type": "text",
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Russell circumplex (1980): emotion = quadrant of AROUSAL (Y) × VALENCE (X).** Both axes are PERSONAL Z-SCORES centred on 0 (your own resting baseline = origin), so the two directions share one scale (~[-1.5, +1.5]).\n\n- **AROUSAL** (Y): `z_filtered` — HRV+HR fused, personal z-score, Kalman-smoothed. 0 = your resting baseline; >0 = more activated. (The watch still shows the friendly 1–10 mapping; here we use the underlying z so both axes match.)\n- **VALENCE** (X): `valence_personal_60s` — WESAD PPG model (LOSO 82%), personally calibrated (neutral = your measured resting median, absorbing cross-device bias), 60 s smoothed. 0 = your resting valence; >0 = more positive.\n- **Dead-band** (neutral zone): width = `valence_deadband`, derived from your own smoothed-valence spread (0.5·std) — measured, not a fixed guess.\n\nEvery threshold is measured or literature, none invented. Shown only after calibration locks."
+      }
+    },
+    {
+      "id": 1,
+      "title": "Circumplex — blue=now (X=calibrated valence, Y=arousal). NW Fear/Anger · NE Happy/Excited · SW Sad/Bored · SE Calm/Relaxed.",
+      "type": "xychart",
+      "gridPos": { "h": 18, "w": 14, "x": 0, "y": 5 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "table",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT x, y_ring, y_state FROM (SELECT 1.5*sin(g*0.0785398) AS x, 1.5*cos(g*0.0785398) AS y_ring, CAST(NULL AS DOUBLE) AS y_state FROM generate_series(0,80) AS t(g) UNION ALL SELECT v.valence_personal_60s AS x, CAST(NULL AS DOUBLE) AS y_ring, CAST(l.z_filtered AS DOUBLE) AS y_state FROM biofizic_live l JOIN biofizic_legacy_valence_wesad v ON l.time = v.time WHERE l.z_filtered IS NOT NULL AND v.valence_baseline_ready >= 0.5 AND $__timeFilter(l.time)) u ORDER BY x"
+        }
+      ],
+      "options": {
+        "seriesMapping": "auto",
+        "tooltip": { "mode": "single" },
+        "legend": { "showLegend": true, "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "show": "points", "pointSize": { "fixed": 5 }, "axisGridShow": true }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "x" },
+            "properties": [
+              { "id": "min", "value": -1.6 },
+              { "id": "max", "value": 1.6 },
+              { "id": "custom.axisLabel", "value": "VALENCE personal z (neg ← 0 → pos)" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "y_ring" },
+            "properties": [
+              { "id": "min", "value": -1.6 },
+              { "id": "max", "value": 1.6 },
+              { "id": "custom.axisLabel", "value": "AROUSAL personal z (calm ← 0 → activated)" },
+              { "id": "color", "value": { "fixed": "#cccccc", "mode": "fixed" } },
+              { "id": "displayName", "value": "reference ring" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "y_state" },
+            "properties": [
+              { "id": "color", "value": { "fixed": "#3274D9", "mode": "fixed" } },
+              { "id": "displayName", "value": "session state" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "title": "Emotion (quadrant + Neutral dead-band) over time",
+      "type": "state-timeline",
+      "gridPos": { "h": 9, "w": 10, "x": 14, "y": 5 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT l.time, CASE WHEN v.valence_baseline_ready < 0.5 THEN 0 WHEN abs(v.valence_personal_60s) < v.valence_deadband THEN 0 WHEN l.z_filtered >= 0 AND v.valence_personal_60s >= 0 THEN 3 WHEN l.z_filtered >= 0 AND v.valence_personal_60s < 0 THEN 4 WHEN l.z_filtered < 0 AND v.valence_personal_60s >= 0 THEN 1 ELSE 2 END AS emotion FROM biofizic_live l JOIN biofizic_legacy_valence_wesad v ON l.time = v.time WHERE l.z_filtered IS NOT NULL AND $__timeFilter(l.time) ORDER BY l.time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "neutral", "color": "gray", "index": 0 } } },
+            { "type": "value", "options": { "1": { "text": "calm/relaxed", "color": "green", "index": 1 } } },
+            { "type": "value", "options": { "2": { "text": "sad/bored", "color": "blue", "index": 2 } } },
+            { "type": "value", "options": { "3": { "text": "happy/excited", "color": "yellow", "index": 3 } } },
+            { "type": "value", "options": { "4": { "text": "stress/anger", "color": "red", "index": 4 } } }
+          ],
+          "color": { "mode": "fixed" },
+          "min": 0,
+          "max": 4
+        }
+      },
+      "options": { "showValue": "never", "mergeValues": true, "rowHeight": 0.9 }
+    },
+    {
+      "id": 3,
+      "title": "Valence: personal (1s, noisy) vs personal_60s (smoothed mood) vs raw",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 10, "x": 14, "y": 14 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, valence_personal, valence_personal_60s, valence_z FROM biofizic_legacy_valence_wesad WHERE $__timeFilter(time) ORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 8, "showPoints": "never" },
+          "min": -1, "max": 1, "decimals": 2
+        }
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    }
+  ]
+}

@@ -85,7 +85,7 @@ def test_comparator_never_feeds_production_decision():
     # LegacyOutputs.respiration, never via the decision path.
     assert hasattr(LegacyEngines, "run")
     from dataclasses import fields
-    from affectus.compute_features.results import PhysiologyDecision
+    from affectus.shared.hrv.results import PhysiologyDecision
     decision_fields = {f.name for f in fields(PhysiologyDecision)}
     assert "respiration" not in decision_fields
     assert "rsa_bpm" not in decision_fields

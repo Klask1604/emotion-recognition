@@ -13,15 +13,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from affectus.compute_features.results import HrvMetrics, MultiWindowHrvResult
+from affectus.shared.hrv.results import HrvMetrics, MultiWindowHrvResult
 from affectus.config import (
     BASELINE_MIN_REST_SAMPLES,
     TEMP_BASELINE_MIN_REST_EPOCHS,
 )
-from affectus.engine.baseline import RestBaselineStore
-from affectus.engine.channels.temperature import SkinTemperatureChannelState
+from affectus.shared.baseline import RestBaselineStore
+from affectus.devices.wrist.modules.temperature import SkinTemperatureChannelState
 from affectus.engine.decision import DecisionState, decide
-from affectus.engine.signal_quality import SignalQuality
+from affectus.shared.signal_quality import SignalQuality
 from affectus.ingestion.messages import SensorBatchMessage
 
 

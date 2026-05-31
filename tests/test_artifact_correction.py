@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from affectus.dsp.artifact_correction import correct_ibi_series
+from affectus.shared.dsp.artifact_correction import correct_ibi_series
 from affectus.ingestion.messages import InterbeatIntervalEntry
 
 

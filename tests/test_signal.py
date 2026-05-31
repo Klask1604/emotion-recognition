@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from affectus.dsp.ibi_filter import (
+from affectus.shared.dsp.ibi_filter import (
     filter_physiological_intervals,
     successive_interval_differences,
 )

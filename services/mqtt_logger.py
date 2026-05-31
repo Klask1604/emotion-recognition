@@ -46,11 +46,14 @@ FLOAT_FIELDS: dict[str, list[str]] = {
         "confidence", "signal_quality", "artifact_rate", "motion_energy",
         "rmssd_w30", "rmssd_w60", "rmssd_w90", "stress_index_w30",
         "stress_index_w60", "stress_index_w90", "window_sec",
+        # 2D emotion verdict (Russell) sent to the watch + valence axis.
+        "valence", "valence_deadband", "valence_confidence", "emotion_verdict_code",
     ],
     "biofizic/state/live": [
         "arousal_10", "arousal_10_raw", "arousal_pct", "mean_hr", "rmssd",
         "stress_index", "baseline_si", "z_si", "signal_quality", "artifact_rate",
         "motion_energy", "window_sec", "ibi_buffer_size",
+        "valence", "valence_deadband", "valence_confidence", "emotion_verdict_code",
     ],
     "biofizic/state/windows": [
         "ibi_buffer_size",
@@ -70,10 +73,10 @@ STRING_FIELDS: dict[str, list[str]] = {}
 TAG_FIELDS: dict[str, list[str]] = {
     "biofizic/state": [
         "emotion", "emotion_baseline", "motion_state", "why",
-        "dominant_channel", "decision_fidelity",
+        "dominant_channel", "decision_fidelity", "emotion_verdict",
     ],
     "biofizic/state/live": [
-        "emotion", "motion_state", "data_quality", "window_used",
+        "emotion", "motion_state", "data_quality", "window_used", "emotion_verdict",
     ],
     "biofizic/state/windows": [
         "motion_state", "w30_quality", "w60_quality", "w90_quality",
@@ -87,11 +90,13 @@ BOOL_FIELDS: dict[str, list[str]] = {
         "baseline_ready",
         "labels_agree",
         "alert",
+        "valence_ready",
     ],
     "biofizic/state/live": [
         "live",
         "profile_ready",
         "baseline_ready",
+        "valence_ready",
     ],
     "biofizic/state/windows": ["baseline_ready"],
 }
@@ -121,6 +126,16 @@ FLOAT_FIELDS.update({
     "biofizic/legacy/valence_fd": [
         "bf", "fhf", "shf", "bf_n", "fhf_n", "shf_n",
         "fhf_bf", "shf_bf", "shf_fhf", "f0_hz", "src_hz",
+    ],
+    # WESAD valence model prediction (observed-only, logged next to the verdict
+    # to judge cross-device transfer). p_positive in [0,1]; valence_z in [-1,1].
+    "biofizic/legacy/valence_wesad": [
+        "p_positive", "valence_z", "confidence", "src_hz",
+        # Personal-baseline calibrated valence (subject-relative): the value the
+        # circumplex uses. valence_personal>0 = more positive than this subject's
+        # own resting neutral. valence_baseline_ready: has calibration locked.
+        "valence_personal", "valence_personal_60s", "valence_deadband",
+        "neutral_valence_z", "valence_baseline_ready",
     ],
 })
 
@@ -175,6 +190,11 @@ SEED_MEASUREMENTS: dict[str, list[str]] = {
     "biofizic_legacy_valence_fd": [
         "bf", "fhf", "shf", "bf_n", "fhf_n", "shf_n",
         "fhf_bf", "shf_bf", "shf_fhf", "f0_hz", "src_hz",
+    ],
+    "biofizic_legacy_valence_wesad": [
+        "p_positive", "valence_z", "confidence", "src_hz",
+        "valence_personal", "valence_personal_60s", "valence_deadband",
+        "neutral_valence_z", "valence_baseline_ready",
     ],
     "biofizic_all_data_live": ["ppg_green", "ppg_ir", "ibi_ms", "ppg_peak"],
     # Cardiac comparator (test_engine + raw PPG sources). Seeded so Grafana

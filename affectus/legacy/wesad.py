@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-from affectus.compute_features.results import HrvMetrics
+from affectus.shared.hrv.results import HrvMetrics
 
 WESAD_FEATURE_NAMES = [
     "rmssd_ms",

@@ -13,7 +13,7 @@ from collections import deque
 import numpy as np
 
 from affectus.config import PPG_ANALYSIS_WINDOW_S, PPG_PPA_BASELINE_WINDOW
-from affectus.dsp.ppg_peaks import detect_ppg_peaks
+from affectus.shared.dsp.ppg_peaks import detect_ppg_peaks
 
 _PPA_SIGMA_FLOOR = 1.0  # linear PPA units; avoids div-by-zero when PPA is flat
 

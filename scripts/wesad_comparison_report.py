@@ -33,7 +33,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import affectus._bootstrap  # noqa: F401
-from affectus.engine.arousal_mapper import cohen_kappa
+from affectus.shared.arousal_mapper import cohen_kappa
 
 
 def query_sql(url: str, database: str, sql: str) -> list[dict]:

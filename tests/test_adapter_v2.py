@@ -4,8 +4,8 @@ capabilities and the same data, and the pipeline ingest path is equivalent."""
 from __future__ import annotations
 
 from affectus.ingestion.messages import AcquisitionBatchMessage
-from affectus.sensing.adapters.schema_v2 import frame_from_acquisition_v2
-from affectus.sensing.capabilities import Capability
+from affectus.devices.wrist.adapter import frame_from_acquisition_v2
+from affectus.contract.capabilities import Capability
 
 
 def _batch(**kw) -> AcquisitionBatchMessage:

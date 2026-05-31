@@ -9,11 +9,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from affectus.compute_features.results import HrvMetrics, MultiWindowHrvResult
+from affectus.shared.hrv.results import HrvMetrics, MultiWindowHrvResult
 from affectus.config import CUSUM_THRESHOLD_H
-from affectus.engine.baseline import RestBaselineStore
+from affectus.shared.baseline import RestBaselineStore
 from affectus.engine.decision import DecisionState, _cusum_update, decide
-from affectus.engine.signal_quality import SignalQuality
+from affectus.shared.signal_quality import SignalQuality
 from affectus.ingestion.messages import SensorBatchMessage
 
 

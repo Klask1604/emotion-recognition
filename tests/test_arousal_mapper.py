@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from affectus.config import KubiosZoneId
-from affectus.engine.arousal_mapper import (
+from affectus.shared.arousal_mapper import (
     arousal_scale_10_to_label,
     cohen_kappa,
     kubios_zone_for_stress_index,

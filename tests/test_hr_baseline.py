@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from affectus.engine.baseline import RestBaselineStore
+from affectus.shared.baseline import RestBaselineStore
 from affectus.config import BASELINE_MIN_REST_SAMPLES
 
 

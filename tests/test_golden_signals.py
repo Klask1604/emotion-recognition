@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from affectus.compute_features.hrv_metrics import compute_hrv_from_entries
-from affectus.dsp.artifact_correction import correct_ibi_series
+from affectus.shared.hrv.metrics import compute_hrv_from_entries
+from affectus.shared.dsp.artifact_correction import correct_ibi_series
 from affectus.ingestion.messages import InterbeatIntervalEntry
 
 

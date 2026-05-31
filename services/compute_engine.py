@@ -30,17 +30,19 @@ import paho.mqtt.client as mqtt
 
 from affectus.config import (
     EPOCH_PUBLISH_INTERVAL_SECONDS,
+    HRV_LOOKBACK_MS,
     LIVE_AROUSAL_HYSTERESIS_TICKS,
     PRIMARY_DECISION_WINDOW_SECONDS,
     SKEW_BACKLOG_WARN_SEC,
     WINDOWS_PUBLISH_INTERVAL_SECONDS,
 )
-from affectus.engine.arousal_mapper import arousal_scale_10_to_label
+from affectus.shared.arousal_mapper import arousal_scale_10_to_label
+from affectus.shared.emotion import emotion_verdict, ValenceVerdictStabilizer
 from affectus.engine.pipeline import PhysiologyPipeline
 from affectus.legacy import LegacyEngines, toggles as legacy_toggles
-from affectus.ingestion.messages import AcquisitionBatchMessage
-from affectus.compute_features.results import MultiWindowResult, WindowResult
-from affectus.compute_features.results import PhysiologyDecision
+from affectus.ingestion.messages import AcquisitionBatchMessage, IbiBatchMessage
+from affectus.shared.hrv.results import MultiWindowResult, WindowResult
+from affectus.shared.hrv.results import PhysiologyDecision
 
 logging.basicConfig(
     level=logging.INFO,
@@ -106,6 +108,25 @@ def _parse_acquisition(data: dict) -> AcquisitionBatchMessage | None:
     )
 
 
+def _parse_ecg_calibration(data: dict) -> tuple[list[int], list[int], list[int], bool]:
+    """Extract (ecg_mv, timestamps_ms, lead_off, final) from an ECG calibration
+    chunk {recv_ms, samples:[{ts, ecg_mv, lead_off, seq}], final}. Returns empty
+    lists on a malformed payload."""
+    samples = data.get("samples")
+    if not isinstance(samples, list):
+        return [], [], [], False
+    mv: list[int] = []
+    ts: list[int] = []
+    lead: list[int] = []
+    for p in samples:
+        if not isinstance(p, dict) or "ts" not in p or "ecg_mv" not in p:
+            continue
+        ts.append(int(p["ts"]))
+        mv.append(int(p["ecg_mv"]))
+        lead.append(int(p.get("lead_off", 0)))
+    return mv, ts, lead, bool(data.get("final", False))
+
+
 class ComputeEngineService:
     def __init__(self, broker: str, port: int) -> None:
         self.pipeline = PhysiologyPipeline()
@@ -128,6 +149,32 @@ class ComputeEngineService:
         # then publish "done" — so the watch can show a spinner meanwhile.
         self._calibrating: bool = False
         self._baseline_was_ready: bool = False
+        # Capabilities announced by the watch in the handshake (biofizic/hello),
+        # keyed by client_id. The pipeline gates feature-modules by the announced
+        # set when present; absent (no handshake yet) falls back to inferring
+        # from the batch contents, so a pre-handshake watch still works.
+        self._announced_caps: dict[str, frozenset] = {}
+        # Last smoothed valence + dead-band, cached from _publish_legacy so the
+        # decision payload (which is built earlier in the epoch) can publish the
+        # valence and the emotion verdict for the watch. One-epoch lag is fine:
+        # valence is 60 s-smoothed, the epoch is 30 s.
+        self._last_valence_personal_60s: float = 0.0
+        self._last_valence_deadband: float = 0.225
+        self._last_valence_ready: bool = False
+        self._last_valence_confidence: float = 0.0
+        self._last_emotion_verdict: tuple[str, int] = ("Neutru", 0)
+        # Brings the valence verdict to parity with arousal: confidence gate +
+        # median smoothing + verdict hysteresis (see ValenceVerdictStabilizer).
+        self._valence_stabilizer = ValenceVerdictStabilizer()
+        # Rolling ECG calibration buffer (raw 500 Hz samples + timestamps + lead).
+        # Filled by the biofizic/ecg/calibrate handler during a finger-hold,
+        # cleared on every cmd/calibrate so each calibration starts clean.
+        self._ecg_cal_mv: list[int] = []
+        self._ecg_cal_ts: list[int] = []
+        self._ecg_cal_lead: list[int] = []
+        # Last R-peak timestamp already fed to the baseline, so each beat is
+        # ingested exactly once across overlapping detection windows (no dupes).
+        self._ecg_last_peak_ms: int = 0
         self.client = mqtt.Client(
             client_id="biofizic_compute",
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
@@ -152,16 +199,103 @@ class ComputeEngineService:
     def stop(self) -> None:
         self.client.disconnect()
 
+    def _handle_hello(self, client, data) -> None:
+        """Validate a watch capability announcement and reply with the ack.
+
+        On a valid announcement, cache the present capabilities (keyed by
+        client_id) so the pipeline gates modules by what the device declared, and
+        reply status:"ok" with the active module list. On too few sensors to
+        classify, reply status:"error" with the reason — the watch shows it and
+        does not stream."""
+        from affectus.contract.schema import parse_capabilities, validate_announcement
+
+        if not isinstance(data, dict):
+            return
+        client_id = str(data.get("client_id", "watch"))
+        cap_names = data.get("capabilities") or []
+        profile = str(data.get("profile", "wrist_ppg"))
+        ack = validate_announcement(cap_names, profile=profile)
+
+        if ack.status == "ok":
+            self._announced_caps[client_id] = parse_capabilities(cap_names)
+            log.info("handshake ok: %s announced %s -> modules %s",
+                     client_id, sorted(cap_names), ack.modules_active)
+        else:
+            self._announced_caps.pop(client_id, None)
+            log.warning("handshake rejected: %s -> %s", client_id, ack.reason)
+
+        payload = {"ts": int(time.time() * 1000), "client_id": client_id, **ack.as_dict()}
+        client.publish("biofizic/hello/ack", json.dumps(payload), qos=1)
+
+    def _handle_ecg_calibration(self, client, data, now: float) -> None:
+        """Ingest one ECG calibration chunk (raw 500 Hz Lead-I): append to the
+        rolling buffer, detect R-peaks over the accumulated window, build IBI, and
+        feed the arousal baseline (motion-gate-bypassed). When that locks the
+        baseline during the finger-hold, publish phase="done" so the watch stops
+        the spinner — the same signal the epoch loop uses, just driven by ECG."""
+        if not self._calibrating:
+            return  # ECG only matters during an active calibration
+        mv, ts, lead, final = _parse_ecg_calibration(data)
+        if mv:
+            self._ecg_cal_mv.extend(mv)
+            self._ecg_cal_ts.extend(ts)
+            self._ecg_cal_lead.extend(lead)
+            # Cap the buffer to the HRV lookback window so it can't grow unbounded
+            # over a long hold (keep the most recent samples).
+            max_samples = int(HRV_LOOKBACK_MS / 1000.0 * 520)  # ~ lookback @ >500 Hz
+            if len(self._ecg_cal_ts) > max_samples:
+                self._ecg_cal_mv = self._ecg_cal_mv[-max_samples:]
+                self._ecg_cal_ts = self._ecg_cal_ts[-max_samples:]
+                self._ecg_cal_lead = self._ecg_cal_lead[-max_samples:]
+
+        from affectus.shared.dsp.ecg_peaks import detect_ecg_rpeaks
+
+        res = detect_ecg_rpeaks(self._ecg_cal_mv, self._ecg_cal_ts, self._ecg_cal_lead)
+        # Each interval is keyed by its END peak timestamp; feed only beats newer
+        # than the last ingested so re-detecting over the growing buffer never
+        # double-counts (the old bug: same beats ingested every chunk -> the lock
+        # fired on accumulation artifacts, not real elapsed time).
+        new_ts: list[int] = []
+        new_ibi: list[int] = []
+        for ts, ms in zip(res.peak_timestamps_ms[1:], res.reconstructed_ibi_ms):
+            if ts > self._ecg_last_peak_ms:
+                new_ts.append(ts)
+                new_ibi.append(ms)
+        if new_ibi:
+            self._ecg_last_peak_ms = new_ts[-1]
+            batch = IbiBatchMessage(
+                timestamp_ms=new_ts[-1],
+                intervals_ms=new_ibi,
+                timestamps_ms=new_ts,
+            )
+            ready = self.pipeline.ingest_ecg_calibration(batch, now=now)
+            # Re-lock signal, identical to the epoch loop's: announce "done" the
+            # moment the baseline locks from ECG IBI.
+            if self._calibrating and ready and not self._baseline_was_ready:
+                self._calibrating = False
+                self.pipeline.ecg_calibration_until = 0.0  # ECG won; PPG can resume
+                self._publish_calibration(client, "Profil calibrat (ECG)", phase="done")
+            self._baseline_was_ready = ready
+
     def _on_connect(self, client, userdata, flags, rc, props=None) -> None:
         if rc != 0:
             return
         topics = [
             ("biofizic/acquisition/batch", 0),
             ("biofizic/cmd/calibrate", 1),
+            # Handshake: the watch announces its sensors here; we validate and
+            # reply on biofizic/hello/ack. QoS 1 so the announce/ack survive a
+            # reconnect.
+            ("biofizic/hello", 1),
+            # ECG calibration stream (raw 500 Hz Lead-I) — only flows during a
+            # finger-hold calibration; the server detects R-peaks -> IBI ->
+            # baseline. Enhancement over PPG; PPG resting stays as fallback.
+            ("biofizic/ecg/calibrate", 0),
         ]
         # Subscribe to the 100 Hz on-demand PPG only when the valence-FD engine
         # is active, so it can use the higher-resolution stream when available.
-        if getattr(self.legacy, "_valence_fd", None) is not None:
+        if getattr(self.legacy, "_valence_fd", None) is not None or \
+                getattr(self.legacy, "_valence_wesad", None) is not None:
             topics.append(("biofizic/ppg/ondemand", 0))
         for topic, qos in topics:
             client.subscribe(topic, qos=qos)
@@ -181,23 +315,64 @@ class ComputeEngineService:
             # green,ir,red},..]}. Feed the valence-FD high-rate buffer; never
             # touches the decision.
             vfd = getattr(self.legacy, "_valence_fd", None)
+            vw = getattr(self.legacy, "_valence_wesad", None)
             sample_list = data.get("samples") if isinstance(data, dict) else None
-            if vfd is not None and isinstance(sample_list, list):
+            if (vfd is not None or vw is not None) and isinstance(sample_list, list):
                 samples = [
                     (int(p["ts"]), int(p["green"]))
                     for p in sample_list
                     if isinstance(p, dict) and "ts" in p and "green" in p
                 ]
                 if samples:
-                    vfd.ingest_ondemand_ppg(samples)
+                    if vfd is not None:
+                        vfd.ingest_ondemand_ppg(samples)
+                    if vw is not None:
+                        vw.ingest_ondemand_ppg(samples)
+            return
+
+        if topic == "biofizic/ecg/calibrate":
+            self._handle_ecg_calibration(client, data, now)
+            return
+
+        if topic == "biofizic/hello":
+            # Capability handshake: the watch announces which sensors it carries
+            # ({client_id, schema, capabilities:[...], profile?}). We validate
+            # against the server-defined contract, cache the result so the
+            # pipeline can gate modules by the ANNOUNCED capabilities, and reply
+            # on biofizic/hello/ack. The watch waits for status:"ok" before it
+            # streams. NEVER feeds the decision directly.
+            self._handle_hello(client, data)
             return
 
         if topic == "biofizic/cmd/calibrate":
-            # Optional self-reported arousal (0..1) anchors where the new baseline
-            # sits on the arousal scale (calm -> low, stressed -> high).
+            # Optional self-reports: arousal (0..1) anchors the arousal scale;
+            # valence (-1..+1) feeds the polarity sign-guard; reactivity
+            # (low|normal|high) is the one-time profile that scales the valence
+            # dead-band. All optional — a bare calibrate still works.
             reported = data.get("reported_arousal")
             reported = float(reported) if isinstance(reported, (int, float)) else None
-            self.pipeline.reset_baseline(reported)
+            reported_valence = data.get("reported_valence")
+            reported_valence = (
+                float(reported_valence)
+                if isinstance(reported_valence, (int, float)) else None
+            )
+            reactivity = data.get("reactivity")
+            reactivity = reactivity if reactivity in ("low", "normal", "high") else None
+            self.pipeline.reset_baseline(reported, reported_valence, reactivity)
+            # ECG calibration is disabled (Samsung ECG R-peak detection was
+            # unreliable on the real watch). Calibration always uses the PPG
+            # resting path. The ECG code stays on disk for future research.
+            self.pipeline.ecg_calibration_until = 0.0
+            # Recalibration re-anchors valence -> drop the verdict history too so
+            # it doesn't carry the old subject's hysteresis/median into the new one.
+            self._valence_stabilizer.reset()
+            self._last_emotion_verdict = ("Neutru", 0)
+            # Fresh ECG calibration buffer for this run (no stale finger-hold data).
+            self._ecg_cal_mv = []
+            self._ecg_cal_ts = []
+            self._ecg_cal_lead = []
+            self._ecg_last_peak_ms = 0
+            self.pipeline.reset_ecg_calibration()
             # Reset clears the baseline -> not ready. Enter "collecting" and let
             # the epoch loop publish "done" once it re-locks.
             self._calibrating = True
@@ -261,6 +436,10 @@ class ComputeEngineService:
         publish_epoch = now - self._last_epoch_at >= EPOCH_PUBLISH_INTERVAL_SECONDS
         if publish_epoch:
             self._last_epoch_at = now
+        # Let _publish_legacy advance the epoch-paced verdict stabiliser only on
+        # epoch ticks (every 30 s), not on every 1 Hz batch — its median/hysteresis
+        # windows are sized in epochs, not seconds.
+        self._is_epoch_tick = publish_epoch
 
         result = self.pipeline.run(
             now=now,
@@ -344,6 +523,59 @@ class ComputeEngineService:
             client.publish("biofizic/legacy/resp", json.dumps({"ts": ts, **out.respiration}), qos=0)
         if out.valence_fd is not None:
             client.publish("biofizic/legacy/valence_fd", json.dumps({"ts": ts, **out.valence_fd}), qos=0)
+        if out.valence_wesad is not None:
+            # Personal valence calibration: recenter the cross-device WESAD model
+            # on this subject. On a resting epoch (same still + usable gate as the
+            # HRV baseline), the raw valence_z trains the personal neutral; the
+            # published valence_personal is the subject-relative valence used by
+            # the circumplex (neutral measured, not assumed 0).
+            vz = out.valence_wesad.get("valence_z")
+            vbase = self.pipeline.valence_baseline
+            if vz is not None:
+                is_resting = (
+                    result is not None
+                    and getattr(result, "motion_state", "") == "still"
+                    and getattr(result, "signal_quality", 0.0) >= 0.5
+                )
+                if is_resting:
+                    vbase.observe_resting(float(vz), now=time.time())
+                personal = vbase.valence_personal(float(vz))
+                # 30 s rolling mean: the emotion quadrant should reflect the
+                # background mood, not a single noisy epoch (a 1 s valence is
+                # statistically too thin — see ValenceSmoother).
+                smoothed = self.pipeline.valence_smoother.update(personal, time.time())
+                out.valence_wesad["valence_personal"] = round(personal, 4)
+                out.valence_wesad["valence_personal_60s"] = round(smoothed, 4)
+                # Dead-band in personal-z units, stable across restarts (derived
+                # from the resting-z spread), scaled by the subject's reactivity
+                # (low-responder -> narrower neutral zone).
+                deadband = vbase.deadband(
+                    reactivity_scale=self.pipeline.reactivity.deadband_scale
+                )
+                out.valence_wesad["valence_deadband"] = round(deadband, 4)
+                out.valence_wesad["neutral_valence_z"] = round(vbase.neutral_valence_z or 0.0, 4)
+                out.valence_wesad["valence_baseline_ready"] = vbase.is_ready
+                # Cache for the decision payload (watch verdict on biofizic/state).
+                self._last_valence_personal_60s = smoothed
+                self._last_valence_deadband = deadband
+                self._last_valence_ready = vbase.is_ready
+                self._last_valence_confidence = float(
+                    out.valence_wesad.get("confidence", 0.0)
+                )
+                # Advance the verdict stabiliser ONCE per 30 s epoch (its median +
+                # hysteresis windows are in epochs). On the 1 Hz batches between
+                # epochs the cached verdict simply persists. The 60 s valence mean
+                # still updates every batch, so the smoothed value fed at the epoch
+                # tick reflects the last 60 s, not just that one second.
+                if getattr(self, "_is_epoch_tick", False):
+                    arousal_z = 0.0
+                    if result is not None and result.decision is not None:
+                        arousal_z = result.decision.stress_index_z_filtered
+                    self._last_emotion_verdict = self._valence_stabilizer.update(
+                        arousal_z, smoothed, self._last_valence_confidence,
+                        deadband, vbase.is_ready,
+                    )
+            client.publish("biofizic/legacy/valence_wesad", json.dumps({"ts": ts, **out.valence_wesad}), qos=0)
 
     @staticmethod
     def _window_payload(window: WindowResult) -> dict:
@@ -389,6 +621,10 @@ class ComputeEngineService:
             "labels_agree": decision.labels_agree,
             "arousal_10": decision.display_arousal_10,
             "arousal_pct": round(decision.display_arousal_10 * 10.0, 1),
+            # NOTE: valence + 2D emotion verdict are NOT sent to the watch — they
+            # were too noisy/low-confidence to be useful. Arousal is the only live
+            # classifier on the watch. The valence research path still runs on
+            # biofizic/legacy/valence_wesad (Grafana only) for offline study.
             # Multi-channel verdict confidence (HR carries it in motion), not the
             # HRV-only quality which collapses when moving. dominant_channel says
             # which signal drives the verdict so the UI can show "via HR".

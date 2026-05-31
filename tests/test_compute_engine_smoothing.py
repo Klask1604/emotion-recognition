@@ -11,7 +11,7 @@ consecutive ticks have agreed on it. These tests pin that behaviour.
 from __future__ import annotations
 
 from affectus.config import LIVE_AROUSAL_HYSTERESIS_TICKS
-from affectus.compute_features.results import (
+from affectus.shared.hrv.results import (
     MultiWindowResult,
     PhysiologyDecision,
     WindowResult,
