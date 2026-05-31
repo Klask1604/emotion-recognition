@@ -292,10 +292,11 @@ class ComputeEngineService:
             # baseline. Enhancement over PPG; PPG resting stays as fallback.
             ("biofizic/ecg/calibrate", 0),
         ]
-        # Subscribe to the 100 Hz on-demand PPG only when the valence-FD engine
-        # is active, so it can use the higher-resolution stream when available.
-        if getattr(self.legacy, "_valence_fd", None) is not None or \
-                getattr(self.legacy, "_valence_wesad", None) is not None:
+        # Subscribe to the 100 Hz on-demand PPG when ANY valence engine that uses
+        # the high-rate waveform is active, so each gets the sharp stream instead
+        # of falling back to the 25 Hz batch (which collapses fine-HRV models).
+        if any(getattr(self.legacy, name, None) is not None for name in
+               ("_valence_fd", "_valence_wesad", "_valence_eevr", "_valence_case")):
             topics.append(("biofizic/ppg/ondemand", 0))
         for topic, qos in topics:
             client.subscribe(topic, qos=qos)
@@ -316,18 +317,23 @@ class ComputeEngineService:
             # touches the decision.
             vfd = getattr(self.legacy, "_valence_fd", None)
             vw = getattr(self.legacy, "_valence_wesad", None)
+            ve = getattr(self.legacy, "_valence_eevr", None)
+            vc = getattr(self.legacy, "_valence_case", None)
+            # Every valence engine that consumes the 100 Hz waveform must get it,
+            # or it falls back to the 25 Hz batch buffer and its morphology/HRV
+            # features degrade (CASE, which leans on fine HRV LF/HF, collapses to
+            # a constant at 25 Hz). Feed all of them.
+            consumers = [c for c in (vfd, vw, ve, vc) if c is not None]
             sample_list = data.get("samples") if isinstance(data, dict) else None
-            if (vfd is not None or vw is not None) and isinstance(sample_list, list):
+            if consumers and isinstance(sample_list, list):
                 samples = [
                     (int(p["ts"]), int(p["green"]))
                     for p in sample_list
                     if isinstance(p, dict) and "ts" in p and "green" in p
                 ]
                 if samples:
-                    if vfd is not None:
-                        vfd.ingest_ondemand_ppg(samples)
-                    if vw is not None:
-                        vw.ingest_ondemand_ppg(samples)
+                    for c in consumers:
+                        c.ingest_ondemand_ppg(samples)
             return
 
         if topic == "biofizic/ecg/calibrate":
@@ -506,6 +512,34 @@ class ComputeEngineService:
             })
         client.publish("biofizic/live", json.dumps(payload), qos=0)
 
+    def _enrich_valence(self, out_dict, vbase, vsmoother, result) -> float | None:
+        """Recenter one valence model's raw valence_z on the subject's personal
+        resting baseline and add the calibrated fields to its published dict, the
+        same way WESAD does. Used for WESAD, EEVR and CASE so all three show
+        subject-relative emotion (neutral measured, not assumed 0). Returns the
+        60 s-smoothed personal valence (or None if no valence_z this epoch)."""
+        vz = out_dict.get("valence_z")
+        if vz is None:
+            return None
+        is_resting = (
+            result is not None
+            and getattr(result, "motion_state", "") == "still"
+            and getattr(result, "signal_quality", 0.0) >= 0.5
+        )
+        if is_resting:
+            vbase.observe_resting(float(vz), now=time.time())
+        personal = vbase.valence_personal(float(vz))
+        smoothed = vsmoother.update(personal, time.time())
+        deadband = vbase.deadband(
+            reactivity_scale=self.pipeline.reactivity.deadband_scale
+        )
+        out_dict["valence_personal"] = round(personal, 4)
+        out_dict["valence_personal_60s"] = round(smoothed, 4)
+        out_dict["valence_deadband"] = round(deadband, 4)
+        out_dict["neutral_valence_z"] = round(vbase.neutral_valence_z or 0.0, 4)
+        out_dict["valence_baseline_ready"] = vbase.is_ready
+        return smoothed
+
     def _publish_legacy(self, client, batch, result) -> None:
         """Publish the parallel research engines on biofizic/legacy/* (never VR)."""
         out = self.legacy.run(batch=batch, result=result, baseline=self.pipeline.baseline)
@@ -525,57 +559,43 @@ class ComputeEngineService:
             client.publish("biofizic/legacy/valence_fd", json.dumps({"ts": ts, **out.valence_fd}), qos=0)
         if out.valence_wesad is not None:
             # Personal valence calibration: recenter the cross-device WESAD model
-            # on this subject. On a resting epoch (same still + usable gate as the
-            # HRV baseline), the raw valence_z trains the personal neutral; the
-            # published valence_personal is the subject-relative valence used by
-            # the circumplex (neutral measured, not assumed 0).
-            vz = out.valence_wesad.get("valence_z")
+            # on this subject (neutral measured on resting epochs, not assumed 0).
             vbase = self.pipeline.valence_baseline
-            if vz is not None:
-                is_resting = (
-                    result is not None
-                    and getattr(result, "motion_state", "") == "still"
-                    and getattr(result, "signal_quality", 0.0) >= 0.5
-                )
-                if is_resting:
-                    vbase.observe_resting(float(vz), now=time.time())
-                personal = vbase.valence_personal(float(vz))
-                # 30 s rolling mean: the emotion quadrant should reflect the
-                # background mood, not a single noisy epoch (a 1 s valence is
-                # statistically too thin — see ValenceSmoother).
-                smoothed = self.pipeline.valence_smoother.update(personal, time.time())
-                out.valence_wesad["valence_personal"] = round(personal, 4)
-                out.valence_wesad["valence_personal_60s"] = round(smoothed, 4)
-                # Dead-band in personal-z units, stable across restarts (derived
-                # from the resting-z spread), scaled by the subject's reactivity
-                # (low-responder -> narrower neutral zone).
-                deadband = vbase.deadband(
-                    reactivity_scale=self.pipeline.reactivity.deadband_scale
-                )
-                out.valence_wesad["valence_deadband"] = round(deadband, 4)
-                out.valence_wesad["neutral_valence_z"] = round(vbase.neutral_valence_z or 0.0, 4)
-                out.valence_wesad["valence_baseline_ready"] = vbase.is_ready
-                # Cache for the decision payload (watch verdict on biofizic/state).
+            smoothed = self._enrich_valence(
+                out.valence_wesad, vbase, self.pipeline.valence_smoother, result)
+            if smoothed is not None:
+                # WESAD is the channel that drives the watch verdict, so it also
+                # caches for the decision payload and advances the stabiliser.
                 self._last_valence_personal_60s = smoothed
-                self._last_valence_deadband = deadband
+                self._last_valence_deadband = out.valence_wesad["valence_deadband"]
                 self._last_valence_ready = vbase.is_ready
                 self._last_valence_confidence = float(
                     out.valence_wesad.get("confidence", 0.0)
                 )
-                # Advance the verdict stabiliser ONCE per 30 s epoch (its median +
-                # hysteresis windows are in epochs). On the 1 Hz batches between
-                # epochs the cached verdict simply persists. The 60 s valence mean
-                # still updates every batch, so the smoothed value fed at the epoch
-                # tick reflects the last 60 s, not just that one second.
+                # Advance the verdict stabiliser ONCE per 30 s epoch (median +
+                # hysteresis windows are in epochs); cached verdict persists between.
                 if getattr(self, "_is_epoch_tick", False):
                     arousal_z = 0.0
                     if result is not None and result.decision is not None:
                         arousal_z = result.decision.stress_index_z_filtered
                     self._last_emotion_verdict = self._valence_stabilizer.update(
                         arousal_z, smoothed, self._last_valence_confidence,
-                        deadband, vbase.is_ready,
+                        out.valence_wesad["valence_deadband"], vbase.is_ready,
                     )
             client.publish("biofizic/legacy/valence_wesad", json.dumps({"ts": ts, **out.valence_wesad}), qos=0)
+
+        # EEVR / CASE valence: observed-only comparison models, each personally
+        # recentered on its OWN baseline (same as WESAD) so the dashboard shows
+        # calibrated emotion for all three — not raw valence. They do NOT feed the
+        # watch verdict (no stabiliser / decision cache).
+        if out.valence_eevr is not None:
+            self._enrich_valence(out.valence_eevr, self.pipeline.valence_baseline_eevr,
+                                 self.pipeline.valence_smoother_eevr, result)
+            client.publish("biofizic/legacy/valence_eevr", json.dumps({"ts": ts, **out.valence_eevr}), qos=0)
+        if out.valence_case is not None:
+            self._enrich_valence(out.valence_case, self.pipeline.valence_baseline_case,
+                                 self.pipeline.valence_smoother_case, result)
+            client.publish("biofizic/legacy/valence_case", json.dumps({"ts": ts, **out.valence_case}), qos=0)
 
     @staticmethod
     def _window_payload(window: WindowResult) -> dict:

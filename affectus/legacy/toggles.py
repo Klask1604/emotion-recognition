@@ -53,6 +53,15 @@ ENABLE_VALENCE_FD = True
 # to judge cross-device transfer to the watch BEFORE it is trusted in the
 # decision. Needs raw PPG + models/valence_wesad.joblib. Never feeds state.
 ENABLE_VALENCE_WESAD = True
+# EEVR- and CASE-trained valence models, run OBSERVED-ONLY alongside WESAD on
+# biofizic/legacy/valence_eevr and biofizic/legacy/valence_case. Same 33-feature
+# shared extractor, same engine class (just a different model bundle), so the
+# three predictions can be compared live on the watch's own signal. Research /
+# thesis comparison only — NEVER feeds biofizic/state. EEVR ≈ chance (56% LOSO),
+# CASE ≈ 58% (the only real valence signal); the dashboard shows the divergence.
+# Need raw PPG + models/valence_eevr.joblib / valence_case.joblib.
+ENABLE_VALENCE_EEVR = True
+ENABLE_VALENCE_CASE = True
 
 
 def any_enabled() -> bool:
@@ -64,4 +73,6 @@ def any_enabled() -> bool:
         or ENABLE_RESPIRATION_COMPARE
         or ENABLE_VALENCE_FD
         or ENABLE_VALENCE_WESAD
+        or ENABLE_VALENCE_EEVR
+        or ENABLE_VALENCE_CASE
     )

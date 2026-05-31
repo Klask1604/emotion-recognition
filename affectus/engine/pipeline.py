@@ -73,6 +73,17 @@ class PhysiologyPipeline:
         # state (mood) rather than each noisy 1 s epoch. Matched to the arousal
         # decision window (w60) so the circumplex has uniform inertia on both axes.
         self.valence_smoother = ValenceSmoother(window_s=60.0)
+        # EEVR- and CASE-trained valence models get their OWN personal baseline +
+        # smoother (own file, own neutral), so each is re-centered on the subject
+        # exactly like WESAD and the comparison dashboard shows calibrated emotion
+        # for all three, not raw valence. Same resting gate feeds all three.
+        from affectus.config import data_dir
+        self.valence_baseline_eevr = ValenceBaselineStore(
+            path=data_dir() / "valence_baseline_eevr.json")
+        self.valence_smoother_eevr = ValenceSmoother(window_s=60.0)
+        self.valence_baseline_case = ValenceBaselineStore(
+            path=data_dir() / "valence_baseline_case.json")
+        self.valence_smoother_case = ValenceSmoother(window_s=60.0)
         # One-time subject reactivity profile: scales the valence dead-band.
         self.reactivity = ReactivityProfile(persist=True)
         # While an ECG calibration is in progress, PPG must NOT lock the baseline
@@ -316,6 +327,11 @@ class PhysiologyPipeline:
         # reported_valence feeds the polarity sign-guard (does not move neutral).
         self.valence_baseline.reset_for_recalibration(reported_valence)
         self.valence_smoother.reset()
+        # The EEVR/CASE comparison baselines re-anchor on the same recalibration.
+        self.valence_baseline_eevr.reset_for_recalibration(reported_valence)
+        self.valence_smoother_eevr.reset()
+        self.valence_baseline_case.reset_for_recalibration(reported_valence)
+        self.valence_smoother_case.reset()
         # Reactivity is a one-time subject profile; set only when the watch sends it.
         if reactivity is not None:
             self.reactivity.set(reactivity)

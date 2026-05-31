@@ -1,0 +1,98 @@
+{
+  "id": null,
+  "uid": "biofizic-valence-3models",
+  "title": "Finding — Valence: 3 models live (WESAD vs EEVR vs CASE)",
+  "tags": ["biofizic", "valence", "comparison"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 10,
+      "title": "READ ME",
+      "type": "text",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Three valence models, same 33-feature PPG extractor, running live on YOUR watch signal in parallel.** Each predicts `valence_z` ∈ [-1, +1] (>0 = positive). Observed-only — none feeds the watch verdict.\n\n| Model | What it learned | LOSO (arousal-matched) | Verdict |\n|---|---|---|---|\n| **WESAD** | stress vs amusement | '82%' | **arousal in disguise** — SHAP shows it leans on mean HR, not valence |\n| **EEVR** | VR high-arousal HV vs LV | **56%** | **chance** — VR design-truth carries no cross-subject valence in PPG |\n| **CASE** | lived joystick HV vs LV, arousal held constant | **~58%** (p=0.014) | **real but weak** — true valence signal, driven by HRV LF/HF balance |\n\n**How to read the chart:** when the three lines AGREE, the window has a strong, unambiguous affect (all models pick it up). When they DIVERGE, the signal is weak and valence is unreliable — exactly the low-SNR regime where PPG valence fails. This divergence IS the thesis result: valence from wrist PPG is only separable at strong, lived induction, and even then modest (~58%)."
+      }
+    },
+    {
+      "id": 1,
+      "title": "valence_z — WESAD vs EEVR vs CASE (live, same signal). Agreement = strong affect; divergence = unreliable.",
+      "type": "timeseries",
+      "gridPos": { "h": 13, "w": 24, "x": 0, "y": 6 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "WESAD",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, valence_z AS \"WESAD (arousal-proxy)\" FROM biofizic_legacy_valence_wesad WHERE valence_z IS NOT NULL AND $__timeFilter(time) ORDER BY time"
+        },
+        {
+          "refId": "EEVR",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, valence_z AS \"EEVR (chance)\" FROM biofizic_legacy_valence_eevr WHERE valence_z IS NOT NULL AND $__timeFilter(time) ORDER BY time"
+        },
+        {
+          "refId": "CASE",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT time, valence_z AS \"CASE (real, weak)\" FROM biofizic_legacy_valence_case WHERE valence_z IS NOT NULL AND $__timeFilter(time) ORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 6, "showPoints": "never", "lineInterpolation": "smooth", "spanNulls": true },
+          "color": { "mode": "palette-classic" },
+          "min": -1, "max": 1, "decimals": 2,
+          "custom.axisLabel": "valence_z (neg ← 0 → pos)"
+        }
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "bottom", "calcs": ["mean", "stdDev", "lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Model agreement — std-dev across the 3 valence_z (low = models agree = trustworthy; high = divergent = unreliable)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 19 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code",
+          "format": "time_series",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT w.time, abs(w.valence_z - c.valence_z) AS \"|WESAD - CASE|\" FROM biofizic_legacy_valence_wesad w JOIN biofizic_legacy_valence_case c ON w.time = c.time WHERE w.valence_z IS NOT NULL AND c.valence_z IS NOT NULL AND $__timeFilter(w.time) ORDER BY w.time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 15, "showPoints": "never", "gradientMode": "opacity" },
+          "color": { "mode": "fixed", "fixedColor": "orange" },
+          "min": 0, "max": 2, "decimals": 2,
+          "custom.axisLabel": "|disagreement|"
+        }
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+    }
+  ]
+}

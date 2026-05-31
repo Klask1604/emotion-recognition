@@ -1,0 +1,115 @@
+{
+  "id": null,
+  "uid": "biofizic-affect-analysis",
+  "title": "Finding — Affect analysis (arousal × valence metrics, explainable)",
+  "tags": ["biofizic", "affect", "analysis"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 100,
+      "title": "READ ME",
+      "type": "text",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Every number behind the two Russell axes, so the verdict is explainable.** AROUSAL (validated) is built from HRV + HR; VALENCE (weak) from PPG. All z-scores are personal (0 = your resting baseline). Use the bottom row to judge whether a reading is trustworthy (still + high signal quality) or noise."
+      }
+    },
+
+    { "id": 1, "type": "row", "title": "The two Russell axes", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 4 }, "collapsed": false },
+    {
+      "id": 11,
+      "title": "AROUSAL (z_filtered) vs the 3 VALENCE models (valence_personal_60s) — the full 2D state, numeric",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 5 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        { "refId": "AROUSAL", "datasource": { "type": "influxdb", "uid": "biofizic-influx" }, "editorMode": "code", "format": "time_series", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT time, z_filtered AS \"AROUSAL z\" FROM biofizic_live WHERE z_filtered IS NOT NULL AND $__timeFilter(time) ORDER BY time" },
+        { "refId": "WESAD", "datasource": { "type": "influxdb", "uid": "biofizic-influx" }, "editorMode": "code", "format": "time_series", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT time, valence_personal_60s AS \"VALENCE WESAD\" FROM biofizic_legacy_valence_wesad WHERE valence_personal_60s IS NOT NULL AND $__timeFilter(time) ORDER BY time" },
+        { "refId": "EEVR", "datasource": { "type": "influxdb", "uid": "biofizic-influx" }, "editorMode": "code", "format": "time_series", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT time, valence_personal_60s AS \"VALENCE EEVR\" FROM biofizic_legacy_valence_eevr WHERE valence_personal_60s IS NOT NULL AND $__timeFilter(time) ORDER BY time" },
+        { "refId": "CASE", "datasource": { "type": "influxdb", "uid": "biofizic-influx" }, "editorMode": "code", "format": "time_series", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT time, valence_personal_60s AS \"VALENCE CASE\" FROM biofizic_legacy_valence_case WHERE valence_personal_60s IS NOT NULL AND $__timeFilter(time) ORDER BY time" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 5, "showPoints": "never", "spanNulls": true }, "color": { "mode": "palette-classic" }, "min": -2, "max": 2, "decimals": 2 } },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "bottom", "calcs": ["mean", "lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+
+    { "id": 2, "type": "row", "title": "What arousal is made of", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }, "collapsed": false },
+    {
+      "id": 21,
+      "title": "z_hr vs z_hrv — the two components fused into arousal (z_filtered)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "influxdb", "uid": "biofizic-influx" }, "editorMode": "code", "format": "time_series", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT time, z_hr AS \"z_HR (heart rate)\", z_hrv AS \"z_HRV (variability)\", z_filtered AS \"z_filtered (fused)\" FROM biofizic_live WHERE z_filtered IS NOT NULL AND $__timeFilter(time) ORDER BY time" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5, "showPoints": "never" }, "color": { "mode": "palette-classic" }, "decimals": 2 } },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 22,
+      "title": "rmssd (ms) + stress_index — the raw HRV behind arousal",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "influxdb", "uid": "biofizic-influx" }, "editorMode": "code", "format": "time_series", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT time, rmssd AS \"RMSSD ms\", stress_index AS \"Kubios stress\", mean_hr AS \"HR bpm\" FROM biofizic_live WHERE rmssd IS NOT NULL AND $__timeFilter(time) ORDER BY time" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5, "showPoints": "never" }, "color": { "mode": "palette-classic" }, "decimals": 1 } },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+
+    { "id": 3, "type": "row", "title": "Now (current values)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }, "collapsed": false },
+    {
+      "id": 31,
+      "title": "Current affect + quality",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 24 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "influxdb", "uid": "biofizic-influx" }, "editorMode": "code", "format": "table", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT arousal_10 AS \"Arousal /10\", z_filtered AS \"Arousal z\", mean_hr AS \"HR bpm\", rmssd AS \"RMSSD ms\", confidence AS \"Confidence\", signal_quality AS \"Signal Q\" FROM biofizic_live WHERE z_filtered IS NOT NULL ORDER BY time DESC LIMIT 1" }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 2, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "orientation": "horizontal", "textMode": "value_and_name", "colorMode": "value", "graphMode": "none" }
+    },
+
+    { "id": 4, "type": "row", "title": "Is this reading trustworthy?", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 }, "collapsed": false },
+    {
+      "id": 41,
+      "title": "signal_quality + confidence + artifact_rate — high quality & low artifacts = trust the verdict",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 14, "x": 0, "y": 31 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "influxdb", "uid": "biofizic-influx" }, "editorMode": "code", "format": "time_series", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT time, signal_quality AS \"Signal quality\", confidence AS \"Confidence\", artifact_rate AS \"Artifact rate\" FROM biofizic_live WHERE signal_quality IS NOT NULL AND $__timeFilter(time) ORDER BY time" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "never" }, "color": { "mode": "palette-classic" }, "min": 0, "max": 1, "decimals": 2 } },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 42,
+      "title": "motion_state + dominant_channel + decision_fidelity",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 10, "x": 14, "y": 31 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "influxdb", "uid": "biofizic-influx" }, "editorMode": "code", "format": "table", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT time, motion_state AS \"Motion\", dominant_channel AS \"Dominant ch\", decision_fidelity AS \"Fidelity\", hrv_weight AS \"HRV weight\" FROM biofizic_live WHERE z_filtered IS NOT NULL ORDER BY time DESC LIMIT 12" }
+      ],
+      "options": { "showHeader": true },
+      "fieldConfig": { "defaults": { "custom": { "align": "auto" } } }
+    }
+  ]
+}

@@ -23,6 +23,8 @@ class LegacyOutputs:
     respiration: dict | None = None  # {"rsa_bpm", "ppg_bpm", confidences, ...}
     valence_fd: dict | None = None   # PPG frequency-domain features (9)
     valence_wesad: dict | None = None  # {"p_positive", "valence_z", confidence}
+    valence_eevr: dict | None = None   # EEVR-trained valence (same dict shape)
+    valence_case: dict | None = None   # CASE-trained valence (same dict shape)
 
     def is_empty(self) -> bool:
         return (
@@ -32,6 +34,8 @@ class LegacyOutputs:
             and self.respiration is None
             and self.valence_fd is None
             and self.valence_wesad is None
+            and self.valence_eevr is None
+            and self.valence_case is None
         )
 
 
@@ -45,6 +49,8 @@ class LegacyEngines:
         self._respiration = None
         self._valence_fd = None
         self._valence_wesad = None
+        self._valence_eevr = None
+        self._valence_case = None
         if toggles.ENABLE_RESPIRATION_COMPARE:
             from affectus.legacy.respiration_compare import RespirationCompareEngine
 
@@ -53,18 +59,29 @@ class LegacyEngines:
             from affectus.legacy.valence_fd_engine import ValenceFdEngine
 
             self._valence_fd = ValenceFdEngine()
-        if toggles.ENABLE_VALENCE_WESAD:
+        # WESAD / EEVR / CASE valence run on the SAME engine class; each just
+        # loads a different bundle. A None model_path uses the WESAD default.
+        def _load_valence(model_path):
             from affectus.legacy.valence_wesad_engine import ValenceWesadEngine
 
             try:
-                self._valence_wesad = ValenceWesadEngine()
+                return ValenceWesadEngine(model_path=model_path)
             except FileNotFoundError as exc:
-                # Toggle on but model not trained yet: skip gracefully (don't
-                # crash the service) until models/valence_wesad.joblib exists.
+                # Toggle on but bundle not trained yet: skip gracefully (don't
+                # crash the service) until the .joblib exists.
                 import logging
 
-                logging.getLogger("legacy").warning("valence_wesad disabled: %s", exc)
-                self._valence_wesad = None
+                logging.getLogger("legacy").warning("valence model disabled: %s", exc)
+                return None
+
+        from pathlib import Path as _Path
+        _models = _Path(__file__).resolve().parents[2] / "models"
+        if toggles.ENABLE_VALENCE_WESAD:
+            self._valence_wesad = _load_valence(None)
+        if toggles.ENABLE_VALENCE_EEVR:
+            self._valence_eevr = _load_valence(_models / "valence_eevr.joblib")
+        if toggles.ENABLE_VALENCE_CASE:
+            self._valence_case = _load_valence(_models / "valence_case.joblib")
 
         if toggles.ENABLE_RAW_PPG or toggles.ENABLE_PPG_PEAKS or toggles.ENABLE_VALENCE:
             from affectus.legacy.raw_ppg import RawPpgEngine
@@ -90,7 +107,8 @@ class LegacyEngines:
     @property
     def active(self) -> bool:
         return any((self._ppg, self._wesad, self._valence, self._respiration,
-                    self._valence_fd, self._valence_wesad))
+                    self._valence_fd, self._valence_wesad,
+                    self._valence_eevr, self._valence_case))
 
     def run(self, *, batch, result, baseline) -> LegacyOutputs:
         """Run the enabled engines for one epoch. `batch` is the parsed
@@ -126,8 +144,17 @@ class LegacyEngines:
         if self._valence_wesad is not None:
             valence_wesad_out = self._valence_wesad.compute(batch)
 
+        valence_eevr_out = None
+        if self._valence_eevr is not None:
+            valence_eevr_out = self._valence_eevr.compute(batch)
+
+        valence_case_out = None
+        if self._valence_case is not None:
+            valence_case_out = self._valence_case.compute(batch)
+
         return LegacyOutputs(
             ppg=ppg_out, wesad=wesad_out, valence=valence_out,
             respiration=respiration_out, valence_fd=valence_fd_out,
             valence_wesad=valence_wesad_out,
+            valence_eevr=valence_eevr_out, valence_case=valence_case_out,
         )

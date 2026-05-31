@@ -137,6 +137,20 @@ FLOAT_FIELDS.update({
         "valence_personal", "valence_personal_60s", "valence_deadband",
         "neutral_valence_z", "valence_baseline_ready",
     ],
+    # EEVR / CASE valence models (observed-only comparison). Each is personally
+    # recentered on its own baseline (like WESAD), so the dashboard shows
+    # calibrated emotion for all three. valence_z raw in [-1,1]; valence_personal*
+    # subject-relative.
+    "biofizic/legacy/valence_eevr": [
+        "p_positive", "valence_z", "confidence", "src_hz",
+        "valence_personal", "valence_personal_60s", "valence_deadband",
+        "neutral_valence_z", "valence_baseline_ready",
+    ],
+    "biofizic/legacy/valence_case": [
+        "p_positive", "valence_z", "confidence", "src_hz",
+        "valence_personal", "valence_personal_60s", "valence_deadband",
+        "neutral_valence_z", "valence_baseline_ready",
+    ],
 })
 
 ALL_TOPICS = list(FLOAT_FIELDS.keys()) + [
@@ -192,6 +206,16 @@ SEED_MEASUREMENTS: dict[str, list[str]] = {
         "fhf_bf", "shf_bf", "shf_fhf", "f0_hz", "src_hz",
     ],
     "biofizic_legacy_valence_wesad": [
+        "p_positive", "valence_z", "confidence", "src_hz",
+        "valence_personal", "valence_personal_60s", "valence_deadband",
+        "neutral_valence_z", "valence_baseline_ready",
+    ],
+    "biofizic_legacy_valence_eevr": [
+        "p_positive", "valence_z", "confidence", "src_hz",
+        "valence_personal", "valence_personal_60s", "valence_deadband",
+        "neutral_valence_z", "valence_baseline_ready",
+    ],
+    "biofizic_legacy_valence_case": [
         "p_positive", "valence_z", "confidence", "src_hz",
         "valence_personal", "valence_personal_60s", "valence_deadband",
         "neutral_valence_z", "valence_baseline_ready",

@@ -16,7 +16,7 @@
       "gridPos": { "h": 5, "w": 24, "x": 0, "y": 0 },
       "options": {
         "mode": "markdown",
-        "content": "**Russell circumplex (1980): emotion = quadrant of AROUSAL (Y) × VALENCE (X).** Both axes are PERSONAL Z-SCORES centred on 0 (your own resting baseline = origin), so the two directions share one scale (~[-1.5, +1.5]).\n\n- **AROUSAL** (Y): `z_filtered` — HRV+HR fused, personal z-score, Kalman-smoothed. 0 = your resting baseline; >0 = more activated. (The watch still shows the friendly 1–10 mapping; here we use the underlying z so both axes match.)\n- **VALENCE** (X): `valence_personal_60s` — WESAD PPG model (LOSO 82%), personally calibrated (neutral = your measured resting median, absorbing cross-device bias), 60 s smoothed. 0 = your resting valence; >0 = more positive.\n- **Dead-band** (neutral zone): width = `valence_deadband`, derived from your own smoothed-valence spread (0.5·std) — measured, not a fixed guess.\n\nEvery threshold is measured or literature, none invented. Shown only after calibration locks."
+        "content": "**Russell circumplex (1980): emotion = quadrant of AROUSAL (Y) × VALENCE (X).** Both axes are PERSONAL Z-SCORES centred on 0 (your own resting baseline = origin), sharing one scale (~[-1.5, +1.5]). Points are clamped to the ring so a large z stays on the circle instead of flying off-axis.\n\n- **AROUSAL** (Y): `z_filtered` — HRV+HR fused, personal z-score, Kalman-smoothed. 0 = resting baseline; >0 = more activated. **Validated, reliable axis.**\n- **VALENCE** (X): `valence_personal_60s` — WESAD PPG model, personally calibrated (neutral = measured resting median), 60 s smoothed. ⚠️ **Weak axis:** arousal-matched, PPG valence is only ~58% cross-subject at best (CASE), ~chance on VR (EEVR), and WESAD's apparent 82% is largely residual AROUSAL (HR), shown by SHAP. Treat valence as a low-confidence tendency, not a verdict. See the *Valence — 3 models* dashboard.\n- **Dead-band**: width = `valence_deadband` (0.5·your smoothed-valence spread) — measured, not invented.\n\nShown only after calibration locks."
       }
     },
     {
@@ -33,7 +33,7 @@
           "format": "table",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT x, y_ring, y_state FROM (SELECT 1.5*sin(g*0.0785398) AS x, 1.5*cos(g*0.0785398) AS y_ring, CAST(NULL AS DOUBLE) AS y_state FROM generate_series(0,80) AS t(g) UNION ALL SELECT v.valence_personal_60s AS x, CAST(NULL AS DOUBLE) AS y_ring, CAST(l.z_filtered AS DOUBLE) AS y_state FROM biofizic_live l JOIN biofizic_legacy_valence_wesad v ON l.time = v.time WHERE l.z_filtered IS NOT NULL AND v.valence_baseline_ready >= 0.5 AND $__timeFilter(l.time)) u ORDER BY x"
+          "rawSql": "SELECT x, y_ring, y_state FROM (SELECT 1.5*sin(g*0.0785398) AS x, 1.5*cos(g*0.0785398) AS y_ring, CAST(NULL AS DOUBLE) AS y_state FROM generate_series(0,80) AS t(g) UNION ALL SELECT GREATEST(-1.5, LEAST(1.5, v.valence_personal_60s)) AS x, CAST(NULL AS DOUBLE) AS y_ring, GREATEST(-1.5, LEAST(1.5, CAST(l.z_filtered AS DOUBLE))) AS y_state FROM biofizic_live l JOIN biofizic_legacy_valence_wesad v ON l.time = v.time WHERE l.z_filtered IS NOT NULL AND v.valence_baseline_ready >= 0.5 AND $__timeFilter(l.time)) u ORDER BY x"
         }
       ],
       "options": {

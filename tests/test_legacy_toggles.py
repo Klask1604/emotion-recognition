@@ -28,7 +28,7 @@ def test_legacy_engines_inactive_when_all_toggles_off(monkeypatch):
     for flag in (
         "ENABLE_RAW_PPG", "ENABLE_PPG_PEAKS", "ENABLE_WESAD",
         "ENABLE_VALENCE", "ENABLE_RESPIRATION_COMPARE", "ENABLE_VALENCE_FD",
-        "ENABLE_VALENCE_WESAD",
+        "ENABLE_VALENCE_WESAD", "ENABLE_VALENCE_EEVR", "ENABLE_VALENCE_CASE",
     ):
         monkeypatch.setattr(toggles, flag, False)
     eng = LegacyEngines()
