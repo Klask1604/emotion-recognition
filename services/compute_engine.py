@@ -163,6 +163,10 @@ class ComputeEngineService:
         self._last_valence_ready: bool = False
         self._last_valence_confidence: float = 0.0
         self._last_emotion_verdict: tuple[str, int] = ("Neutru", 0)
+        # Latest VR scene context from Unity (raw cues + derived valence prior +
+        # wall-clock ts). The emotion verdict uses it when fresh (<10 s) so valence
+        # comes from the SCENE (honest), not the pulse. None until Unity sends one.
+        self._last_context: dict | None = None
         # Brings the valence verdict to parity with arousal: confidence gate +
         # median smoothing + verdict hysteresis (see ValenceVerdictStabilizer).
         self._valence_stabilizer = ValenceVerdictStabilizer()
@@ -294,6 +298,9 @@ class ComputeEngineService:
             # User emotion feedback (a Russell quadrant tap). QoS 1 so a label is
             # never silently dropped — each one is a hand-collected training pair.
             ("biofizic/cmd/feedback", 1),
+            # VR scene context from Unity (raw visual cues -> valence prior). QoS 0
+            # at ~1 Hz; the verdict uses the latest if it is fresh (<10 s).
+            ("biofizic/context", 0),
         ]
         # Subscribe to the 100 Hz on-demand PPG when ANY valence engine that uses
         # the high-rate waveform is active, so each gets the sharp stream instead
@@ -395,6 +402,10 @@ class ComputeEngineService:
 
         if topic == "biofizic/cmd/feedback":
             self._handle_feedback(client, data, now)
+            return
+
+        if topic == "biofizic/context":
+            self._handle_context(data, now)
             return
 
         if topic == "biofizic/acquisition/batch":
@@ -585,9 +596,23 @@ class ComputeEngineService:
                     arousal_z = 0.0
                     if result is not None and result.decision is not None:
                         arousal_z = result.decision.stress_index_z_filtered
+                    # If Unity sent a FRESH scene context (<10 s), the valence axis
+                    # comes from the SCENE (honest, strong) instead of the weak
+                    # PPG valence. Arousal still comes from physiology. Otherwise
+                    # fall back to the PPG valence as before.
+                    ctx = self._last_context
+                    use_context = (
+                        ctx is not None and (time.time() - ctx["ts"]) < 10.0
+                    )
+                    valence_for_verdict = ctx["valence_prior"] if use_context else smoothed
+                    conf_for_verdict = 1.0 if use_context else self._last_valence_confidence
+                    deadband_for_verdict = (
+                        0.15 if use_context else out.valence_wesad["valence_deadband"]
+                    )
+                    self._valence_source = "context" if use_context else "ppg"
                     self._last_emotion_verdict = self._valence_stabilizer.update(
-                        arousal_z, smoothed, self._last_valence_confidence,
-                        out.valence_wesad["valence_deadband"], vbase.is_ready,
+                        arousal_z, valence_for_verdict, conf_for_verdict,
+                        deadband_for_verdict, vbase.is_ready or use_context,
                     )
             client.publish("biofizic/legacy/valence_wesad", json.dumps({"ts": ts, **out.valence_wesad}), qos=0)
 
@@ -652,6 +677,29 @@ class ComputeEngineService:
             "eevr_p": row["eevr_p_positive"],
             "case_p": row["case_p_positive"],
         }), qos=0)
+
+    def _handle_context(self, data, now) -> None:
+        """VR scene context from Unity: cache the raw visual cues + the derived
+        valence prior, timestamped, so the emotion verdict can use the SCENE's
+        valence (honest) when it is fresh. Degenerate input -> ignored."""
+        from affectus.shared.scene_context import (
+            context_to_valence_prior, valence_prior_label,
+        )
+
+        def _f(key, default=0.5):
+            v = data.get(key)
+            return float(v) if isinstance(v, (int, float)) else default
+
+        light = _f("light"); r = _f("r"); g = _f("g"); b = _f("b"); motion = _f("motion", 0.0)
+        prior = context_to_valence_prior(light, r, g, b, motion)
+        self._last_context = {
+            "scene": str(data.get("scene") or "unknown"),
+            "light": round(light, 3), "r": round(r, 3), "g": round(g, 3), "b": round(b, 3),
+            "motion": round(motion, 3),
+            "valence_prior": prior,
+            "label": valence_prior_label(prior),
+            "ts": now,
+        }
 
     @staticmethod
     def _window_payload(window: WindowResult) -> dict:
@@ -731,6 +779,18 @@ class ComputeEngineService:
             "why": decision.decision_reason,
             "window_sec": window_sec,
         }
+        # 2D Russell emotion verdict (arousal × valence). Valence comes from the VR
+        # scene CONTEXT when fresh (honest: valence_source="context"), not from the
+        # pulse. Only attached when a context-derived verdict exists, so the watch's
+        # arousal-only path is unchanged when there's no VR running.
+        ctx = self._last_context
+        if ctx is not None and (time.time() - ctx["ts"]) < 10.0:
+            label, code = self._last_emotion_verdict
+            payload["emotion_2d"] = label
+            payload["emotion_2d_code"] = code
+            payload["valence_prior"] = ctx["valence_prior"]
+            payload["valence_source"] = "context"
+            payload["scene"] = ctx["scene"]
         if result is not None:
             # Report the window that ACTUALLY drove the verdict (w60 normally,
             # w30 only during the first 60 s before w60 is computable), not a

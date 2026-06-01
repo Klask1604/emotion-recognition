@@ -157,6 +157,9 @@ FLOAT_FIELDS.update({
     "biofizic/legacy/feedback": [
         "quadrant_code", "arousal_z", "wesad_p", "eevr_p", "case_p",
     ],
+    # VR scene context from Unity (raw visual cues). Logged so the dashboard can
+    # show that valence comes from the SCENE, synced with arousal.
+    "biofizic/context": ["light", "r", "g", "b", "motion"],
 })
 
 ALL_TOPICS = list(FLOAT_FIELDS.keys()) + [
@@ -229,6 +232,7 @@ SEED_MEASUREMENTS: dict[str, list[str]] = {
     "biofizic_legacy_feedback": [
         "quadrant_code", "arousal_z", "wesad_p", "eevr_p", "case_p",
     ],
+    "biofizic_context": ["light", "r", "g", "b", "motion"],
     "biofizic_all_data_live": ["ppg_green", "ppg_ir", "ibi_ms", "ppg_peak"],
     # Cardiac comparator (test_engine + raw PPG sources). Seeded so Grafana
     # shows "No data" instead of "table not found" before the first publish.
