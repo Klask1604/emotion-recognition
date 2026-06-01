@@ -1,0 +1,181 @@
+{
+  "uid": "biofizic-polarity",
+  "title": "Finding - Polarity (negative vs positive)",
+  "tags": ["biofizic", "polarity", "emotion"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "READ ME",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "## Polarity - negative vs positive\nThe product-facing model: is the affect **negative** or **positive** right now? Trained on WESAD wrist BVP stress-vs-amusement (~81% LOSO, both high-arousal so it reads affect type not just activation) with a **CORAL** transform aligning it to this watch's own signal. Reports only a sign when the affect is real - not the full spectrum, not small fluctuations. `polarity_z` in [-1,1] (>0 positive). Neutral dead-band |z|<0.2 = honest 'don't know'."
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Current polarity",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 4 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "format": "table",
+          "rawQuery": true,
+          "queryType": "sql",
+          "editorMode": "code",
+          "rawSql": "SELECT label_code FROM biofizic_legacy_polarity ORDER BY time DESC LIMIT 1"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "-1": { "text": "NEGATIV", "color": "red", "index": 0 } } },
+            { "type": "value", "options": { "0": { "text": "NEUTRU", "color": "gray", "index": 1 } } },
+            { "type": "value", "options": { "1": { "text": "POZITIV", "color": "green", "index": 2 } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "gray", "value": null } ] }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Confidence now",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 4 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "format": "table",
+          "rawQuery": true,
+          "queryType": "sql",
+          "editorMode": "code",
+          "rawSql": "SELECT confidence FROM biofizic_legacy_polarity ORDER BY time DESC LIMIT 1"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0, "max": 1, "unit": "percentunit",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "gray", "value": null },
+            { "color": "orange", "value": 0.2 },
+            { "color": "green", "value": 0.5 }
+          ] }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "% of time the model is confident (>=0.2)",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 4 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "format": "table",
+          "rawQuery": true,
+          "queryType": "sql",
+          "editorMode": "code",
+          "rawSql": "SELECT 100.0 * SUM(CASE WHEN confidence >= 0.2 THEN 1 ELSE 0 END) / COUNT(*) AS pct FROM biofizic_legacy_polarity WHERE time >= now() - INTERVAL '15 minutes'"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0, "max": 100, "unit": "percent",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "gray", "value": null },
+            { "color": "green", "value": 50 }
+          ] }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "state-timeline",
+      "title": "Polarity over time",
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 10 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "format": "table",
+          "rawQuery": true,
+          "queryType": "sql",
+          "editorMode": "code",
+          "rawSql": "SELECT time, label_code FROM biofizic_legacy_polarity WHERE time >= now() - INTERVAL '15 minutes' ORDER BY time"
+        }
+      ],
+      "options": { "mergeValues": true, "showValue": "never", "rowHeight": 0.9 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "-1": { "text": "negativ", "color": "red", "index": 0 } } },
+            { "type": "value", "options": { "0": { "text": "neutru", "color": "gray", "index": 1 } } },
+            { "type": "value", "options": { "1": { "text": "pozitiv", "color": "green", "index": 2 } } }
+          ]
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Polarity score over time (>0 positive, <0 negative)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 17 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "format": "time_series",
+          "rawQuery": true,
+          "queryType": "sql",
+          "editorMode": "code",
+          "rawSql": "SELECT time, polarity_z, confidence FROM biofizic_legacy_polarity WHERE time >= now() - INTERVAL '15 minutes' ORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "spanNulls": true },
+          "min": -1, "max": 1,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "gray", "value": -0.2 },
+            { "color": "green", "value": 0.2 }
+          ] }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "polarity_z" },
+            "properties": [ { "id": "custom.lineWidth", "value": 3 } ] }
+        ]
+      }
+    }
+  ]
+}

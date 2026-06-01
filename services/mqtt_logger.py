@@ -110,6 +110,7 @@ FLOAT_FIELDS["biofizic/live"] = [
 ]
 TAG_FIELDS["biofizic/live"] = ["motion_state", "dominant_channel", "decision_fidelity"]
 BOOL_FIELDS["biofizic/live"] = ["alert", "baseline_ready"]
+BOOL_FIELDS["biofizic/legacy/polarity"] = ["arousal_gated"]
 
 # Parallel research/legacy engines (never feed VR; for comparison dashboards).
 FLOAT_FIELDS.update({
@@ -149,6 +150,13 @@ FLOAT_FIELDS.update({
         "p_positive", "valence_z", "confidence", "src_hz",
         "valence_personal", "valence_personal_60s", "valence_deadband",
         "neutral_valence_z", "valence_baseline_ready",
+    ],
+    # Polarity (negative / neutral / positive) - the product-facing 3-class model.
+    # p_* are class probabilities; polarity_z in [-1,1] (>0 positive); label_code
+    # -1 negative / 0 neutral / 1 positive.
+    "biofizic/legacy/polarity": [
+        "p_neutral", "p_negative", "p_positive", "polarity_z",
+        "confidence", "label_code", "arousal_z",
     ],
     # User emotion feedback summary (one row per tap). The 33 features stay in
     # data/feedback_labels.jsonl; Influx holds only the label + each model's
@@ -226,6 +234,10 @@ SEED_MEASUREMENTS: dict[str, list[str]] = {
         "p_positive", "valence_z", "confidence", "src_hz",
         "valence_personal", "valence_personal_60s", "valence_deadband",
         "neutral_valence_z", "valence_baseline_ready",
+    ],
+    "biofizic_legacy_polarity": [
+        "p_neutral", "p_negative", "p_positive", "polarity_z",
+        "confidence", "label_code", "arousal_z",
     ],
     "biofizic_legacy_feedback": [
         "quadrant_code", "arousal_z", "wesad_p", "eevr_p", "case_p",

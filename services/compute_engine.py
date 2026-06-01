@@ -625,6 +625,26 @@ class ComputeEngineService:
             self._enrich_valence(out.valence_case, self.pipeline.valence_baseline_case,
                                  self.pipeline.valence_smoother_case, result)
             client.publish("biofizic/legacy/valence_case", json.dumps({"ts": ts, **out.valence_case}), qos=0)
+        # Polarity (negative / neutral / positive). The 3-class model has its own
+        # neutral class, but at low arousal it can still mistake a resting subject
+        # for mild stress. AROUSAL GATE: you cannot be 'stressed/negative' while
+        # physiologically calm, so if arousal is at/below the subject's resting
+        # baseline (z <= 0) we force NEUTRAL. Arousal is the validated axis; we let
+        # it veto a polarity assertion that contradicts a calm body. Above baseline,
+        # the model's negative/positive call stands.
+        if out.polarity is not None:
+            arousal_z = 0.0
+            if result is not None and result.decision is not None:
+                arousal_z = float(getattr(result.decision,
+                                          "stress_index_z_filtered", 0.0) or 0.0)
+            out.polarity["arousal_z"] = round(arousal_z, 4)
+            out.polarity["arousal_gated"] = False
+            if arousal_z <= 0.0 and out.polarity.get("label_code") != 0:
+                # calm body -> override any non-neutral call to neutral
+                out.polarity["label"] = "neutral"
+                out.polarity["label_code"] = 0
+                out.polarity["arousal_gated"] = True
+            client.publish("biofizic/legacy/polarity", json.dumps({"ts": ts, **out.polarity}), qos=0)
 
         # Cache the three models' predictions + the live arousal z at this instant,
         # so a feedback tap can pair the user's label with what each model said

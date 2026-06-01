@@ -24,6 +24,7 @@ class LegacyOutputs:
     valence_wesad: dict | None = None  # {"p_positive", "valence_z", confidence}
     valence_eevr: dict | None = None   # EEVR-trained valence (same dict shape)
     valence_case: dict | None = None   # CASE-trained valence (same dict shape)
+    polarity: dict | None = None       # {"p_positive", "polarity_z", "label", ...}
 
     def is_empty(self) -> bool:
         return (
@@ -34,6 +35,7 @@ class LegacyOutputs:
             and self.valence_wesad is None
             and self.valence_eevr is None
             and self.valence_case is None
+            and self.polarity is None
         )
 
 
@@ -48,6 +50,7 @@ class LegacyEngines:
         self._valence_wesad = None
         self._valence_eevr = None
         self._valence_case = None
+        self._polarity = None
         if toggles.ENABLE_RESPIRATION_COMPARE:
             from affectus.legacy.respiration_compare import RespirationCompareEngine
 
@@ -79,6 +82,16 @@ class LegacyEngines:
             self._valence_eevr = _load_valence(_models / "valence_eevr.joblib")
         if toggles.ENABLE_VALENCE_CASE:
             self._valence_case = _load_valence(_models / "valence_case.joblib")
+        if toggles.ENABLE_POLARITY:
+            from affectus.legacy.polarity_engine import PolarityEngine
+
+            try:
+                self._polarity = PolarityEngine()
+            except FileNotFoundError as exc:
+                import logging
+
+                logging.getLogger("legacy").warning("polarity disabled: %s", exc)
+                self._polarity = None
 
         if toggles.ENABLE_RAW_PPG or toggles.ENABLE_PPG_PEAKS:
             from affectus.legacy.raw_ppg import RawPpgEngine
@@ -101,7 +114,7 @@ class LegacyEngines:
     def active(self) -> bool:
         return any((self._ppg, self._wesad, self._respiration,
                     self._valence_fd, self._valence_wesad,
-                    self._valence_eevr, self._valence_case))
+                    self._valence_eevr, self._valence_case, self._polarity))
 
     def run(self, *, batch, result, baseline) -> LegacyOutputs:
         """Run the enabled engines for one epoch. `batch` is the parsed
@@ -138,9 +151,14 @@ class LegacyEngines:
         if self._valence_case is not None:
             valence_case_out = self._valence_case.compute(batch)
 
+        polarity_out = None
+        if self._polarity is not None:
+            polarity_out = self._polarity.compute(batch)
+
         return LegacyOutputs(
             ppg=ppg_out, wesad=wesad_out,
             respiration=respiration_out, valence_fd=valence_fd_out,
             valence_wesad=valence_wesad_out,
             valence_eevr=valence_eevr_out, valence_case=valence_case_out,
+            polarity=polarity_out,
         )
