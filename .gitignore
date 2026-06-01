@@ -36,6 +36,9 @@ tools/*.png
 .idea/
 *.swp
 
+# Claude Code local config (not project files)
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
