@@ -278,7 +278,7 @@ class ComputeEngineService:
             if self._calibrating and ready and not self._baseline_was_ready:
                 self._calibrating = False
                 self.pipeline.ecg_calibration_until = 0.0  # ECG won; PPG can resume
-                self._publish_calibration(client, "Profil calibrat (ECG)", phase="done")
+                self._publish_calibration(client, "Profile calibrated (ECG)", phase="done")
             self._baseline_was_ready = ready
 
     def _on_connect(self, client, userdata, flags, rc, props=None) -> None:
@@ -395,7 +395,7 @@ class ComputeEngineService:
             self._baseline_was_ready = False
             self._publish_calibration(
                 client,
-                "Recalibrare… stai liniștit 1–2 min",
+                "Recalibrating... hold still 1-2 min",
                 phase="collecting",
             )
             return
@@ -488,7 +488,7 @@ class ComputeEngineService:
         if self._calibrating and result.baseline_ready and not self._baseline_was_ready:
             self._calibrating = False
             self._publish_calibration(
-                client, "Profil calibrat", phase="done"
+                client, "Profile calibrated", phase="done"
             )
         self._baseline_was_ready = result.baseline_ready
         return result
@@ -562,15 +562,12 @@ class ComputeEngineService:
         """Publish the parallel research engines on biofizic/legacy/* (never VR)."""
         out = self.legacy.run(batch=batch, result=result, baseline=self.pipeline.baseline)
         ts = self._anchor_ms
-        log.debug("legacy out: ppg=%s wesad=%s valence=%s resp=%s",
-                  out.ppg is not None, out.wesad is not None,
-                  out.valence is not None, out.respiration)
+        log.debug("legacy out: ppg=%s wesad=%s resp=%s",
+                  out.ppg is not None, out.wesad is not None, out.respiration)
         if out.ppg is not None:
             client.publish("biofizic/legacy/ppg", json.dumps({"ts": ts, **out.ppg}), qos=0)
         if out.wesad is not None:
             client.publish("biofizic/legacy/wesad", json.dumps({"ts": ts, **out.wesad}), qos=0)
-        if out.valence is not None:
-            client.publish("biofizic/legacy/valence", json.dumps({"ts": ts, **out.valence}), qos=0)
         if out.respiration is not None:
             client.publish("biofizic/legacy/resp", json.dumps({"ts": ts, **out.respiration}), qos=0)
         if out.valence_fd is not None:

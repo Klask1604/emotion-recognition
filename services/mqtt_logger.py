@@ -114,7 +114,6 @@ BOOL_FIELDS["biofizic/live"] = ["alert", "baseline_ready"]
 # Parallel research/legacy engines (never feed VR; for comparison dashboards).
 FLOAT_FIELDS.update({
     "biofizic/legacy/wesad": ["p_stress"],
-    "biofizic/legacy/valence": ["valence", "rmssd_z", "ppa_z"],
     "biofizic/legacy/ppg": ["n_peaks", "ppa", "ppa_z", "sample_rate_hz", "ibi_recon_mean"],
     # Respiration comparator: RSA-from-IBI vs PPG-amplitude, side by side, plus
     # the agreement when both are confident (see legacy/respiration_compare).
@@ -204,7 +203,6 @@ FLOAT_FIELDS.update({
 # then shows "No data" instead of a hard "table not found" error in those panels.
 SEED_MEASUREMENTS: dict[str, list[str]] = {
     "biofizic_legacy_wesad": ["p_stress"],
-    "biofizic_legacy_valence": ["valence", "rmssd_z", "ppa_z"],
     "biofizic_legacy_ppg": ["n_peaks", "ppa", "ppa_z", "sample_rate_hz", "ibi_recon_mean"],
     "biofizic_legacy_resp": [
         "rsa_bpm", "rsa_conf", "rsa_prom",

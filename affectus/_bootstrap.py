@@ -1,4 +1,4 @@
-"""Adaugă rădăcina proiectului pe sys.path (rulare locală `python services/...`)."""
+"""Add the project root to sys.path (for local runs like `python services/...`)."""
 
 from __future__ import annotations
 

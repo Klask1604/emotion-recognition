@@ -1,5 +1,5 @@
-"""Legacy engines (PPG / WESAD / valence) are off by default — they are
-chest-strap-trained (WESAD) or ad-hoc (valence) and produce biased output on
+"""Legacy engines (PPG / WESAD / valence models) are off by default — they are
+chest-strap-trained (WESAD) or research-only, and produce biased output on
 wrist-only PPG. They run in parallel to production ONLY when explicitly
 toggled on for a specific research session. They must never raise even when
 fed None, so a missing input degrades gracefully instead of taking down
@@ -27,7 +27,7 @@ def test_legacy_engines_inactive_when_all_toggles_off(monkeypatch):
     # compute service skips them entirely (the "production light" path).
     for flag in (
         "ENABLE_RAW_PPG", "ENABLE_PPG_PEAKS", "ENABLE_WESAD",
-        "ENABLE_VALENCE", "ENABLE_RESPIRATION_COMPARE", "ENABLE_VALENCE_FD",
+        "ENABLE_RESPIRATION_COMPARE", "ENABLE_VALENCE_FD",
         "ENABLE_VALENCE_WESAD", "ENABLE_VALENCE_EEVR", "ENABLE_VALENCE_CASE",
     ):
         monkeypatch.setattr(toggles, flag, False)
@@ -38,7 +38,6 @@ def test_legacy_engines_inactive_when_all_toggles_off(monkeypatch):
 def test_legacy_engines_become_active_when_toggle_flipped(monkeypatch):
     # Flipping any toggle on must activate the engine surface so a research
     # session can be opted in without code changes elsewhere.
-    monkeypatch.setattr(toggles, "ENABLE_VALENCE", True)
     monkeypatch.setattr(toggles, "ENABLE_RAW_PPG", True)
     eng = LegacyEngines()
     assert eng.active

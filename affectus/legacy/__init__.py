@@ -19,7 +19,6 @@ from affectus.legacy import toggles
 class LegacyOutputs:
     ppg: dict | None = None       # detected peaks, PPA, reconstructed IBI
     wesad: dict | None = None     # {"p_stress": float}
-    valence: dict | None = None   # {"valence": float, "ppa_z": float}
     respiration: dict | None = None  # {"rsa_bpm", "ppg_bpm", confidences, ...}
     valence_fd: dict | None = None   # PPG frequency-domain features (9)
     valence_wesad: dict | None = None  # {"p_positive", "valence_z", confidence}
@@ -30,7 +29,6 @@ class LegacyOutputs:
         return (
             self.ppg is None
             and self.wesad is None
-            and self.valence is None
             and self.respiration is None
             and self.valence_fd is None
             and self.valence_wesad is None
@@ -45,7 +43,6 @@ class LegacyEngines:
     def __init__(self) -> None:
         self._ppg = None
         self._wesad = None
-        self._valence = None
         self._respiration = None
         self._valence_fd = None
         self._valence_wesad = None
@@ -83,7 +80,7 @@ class LegacyEngines:
         if toggles.ENABLE_VALENCE_CASE:
             self._valence_case = _load_valence(_models / "valence_case.joblib")
 
-        if toggles.ENABLE_RAW_PPG or toggles.ENABLE_PPG_PEAKS or toggles.ENABLE_VALENCE:
+        if toggles.ENABLE_RAW_PPG or toggles.ENABLE_PPG_PEAKS:
             from affectus.legacy.raw_ppg import RawPpgEngine
 
             self._ppg = RawPpgEngine()
@@ -99,14 +96,10 @@ class LegacyEngines:
 
                 logging.getLogger("legacy").warning("WESAD disabled: %s", exc)
                 self._wesad = None
-        if toggles.ENABLE_VALENCE:
-            from affectus.legacy.valence import ValenceEngine
-
-            self._valence = ValenceEngine()
 
     @property
     def active(self) -> bool:
-        return any((self._ppg, self._wesad, self._valence, self._respiration,
+        return any((self._ppg, self._wesad, self._respiration,
                     self._valence_fd, self._valence_wesad,
                     self._valence_eevr, self._valence_case))
 
@@ -115,10 +108,8 @@ class LegacyEngines:
         AcquisitionBatchMessage, `result` the production MultiWindowResult,
         `baseline` the RestBaselineStore (for personal z-scores)."""
         ppg_out = None
-        ppa_z = 0.0
         if self._ppg is not None:
             ppg_out = self._ppg.process(batch)
-            ppa_z = self._ppg.ppa_z
 
         decision = result.decision if result is not None else None
         primary = decision.multi_window.window_30_seconds if (decision and decision.multi_window) else None
@@ -126,11 +117,6 @@ class LegacyEngines:
         wesad_out = None
         if self._wesad is not None and primary is not None:
             wesad_out = self._wesad.predict(primary)
-
-        valence_out = None
-        if self._valence is not None and decision is not None:
-            rmssd_z = baseline.rmssd_z_score(decision.rmssd_ms) if baseline.is_ready else 0.0
-            valence_out = self._valence.compute(rmssd_z=rmssd_z, ppa_z=ppa_z)
 
         respiration_out = None
         if self._respiration is not None:
@@ -153,7 +139,7 @@ class LegacyEngines:
             valence_case_out = self._valence_case.compute(batch)
 
         return LegacyOutputs(
-            ppg=ppg_out, wesad=wesad_out, valence=valence_out,
+            ppg=ppg_out, wesad=wesad_out,
             respiration=respiration_out, valence_fd=valence_fd_out,
             valence_wesad=valence_wesad_out,
             valence_eevr=valence_eevr_out, valence_case=valence_case_out,
