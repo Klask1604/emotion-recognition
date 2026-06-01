@@ -5,23 +5,25 @@ Offline / one-shot tooling: generate the Grafana dashboards and produce the
 method-comparison report for the thesis. Not part of the live pipeline.
 
 ## Inputs
-- `generate_grafana_dashboards.py`: nothing external — panel/SQL definitions live in code.
+- `generate_grafana_dashboards.py`: nothing external - panel/SQL definitions live in code.
 - `wesad_comparison_report.py`: reads InfluxDB (`biofizic_state` + `biofizic_legacy_wesad`).
+- `validate_galaxyppg.py`: reads the replay trajectory from `tools/replay_galaxyppg.py`.
 
 ## Outputs
 - **Dashboard JSON** written to `docker/grafana/provisioning/dashboards/*.json`
-  (13 dashboards; titles embed "what it shows — what to look for").
-- **Comparison report**: Cohen's κ (population vs personal labels), WESAD
-  false-positive-rate-at-rest, Spearman ρ — the numbers that justify the personal-baseline
+  (titles embed "what it shows - what to look for").
+- **Comparison report**: Cohen's kappa (population vs personal labels), WESAD
+  false-positive-rate-at-rest, Spearman rho - the numbers that justify the personal-baseline
   approach over a foreign-dataset ML model.
+- **GalaxyPPG validation**: per-subject coverage + arousal behaviour vs Polar ECG
+  ground truth, written to `eval_results/*.md`.
 
 ## Key files
 | File | Role |
 |---|---|
 | `generate_grafana_dashboards.py` | `ts_panel`/`stat_panel`/`timeline_panel` builders + one `build_*_dashboard()` per board; `main()` writes the JSON files |
-| `wesad_comparison_report.py` | Queries InfluxDB, computes κ / FP-rate / ρ |
-| `export_session_influx.py` | Export a session (state + combined + sensors) from InfluxDB to CSV |
-| `generate_ml_evaluation_report.py` | Build a deterministic ML evaluation report from `eval_results/*.json` |
+| `wesad_comparison_report.py` | Queries InfluxDB, computes kappa / FP-rate / rho |
+| `validate_galaxyppg.py` | Validates the wrist-only pipeline against GalaxyPPG (21 subjects) vs Polar ECG |
 
 ## Data flow
 ```

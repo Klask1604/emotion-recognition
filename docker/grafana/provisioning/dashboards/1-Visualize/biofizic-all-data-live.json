@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-all-data-live",
-  "title": "Live — Raw Signal (PPG wave + IBI)",
+  "title": "Live - Raw Signal (PPG wave + IBI)",
   "tags": [
     "biofizic",
     "raw"
@@ -13,7 +13,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "Raw PPG (green) + detected peaks — clean pulse wave?",
+      "title": "Raw PPG (green) + detected peaks - clean pulse wave?",
       "type": "timeseries",
       "gridPos": {
         "h": 9,
@@ -82,7 +82,7 @@
     },
     {
       "id": 2,
-      "title": "IBI: watch SDK vs reconstructed from PPG peaks — should match",
+      "title": "IBI: watch SDK vs reconstructed from PPG peaks - should match",
       "type": "timeseries",
       "gridPos": {
         "h": 8,

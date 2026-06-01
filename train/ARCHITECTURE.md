@@ -1,35 +1,76 @@
 # train/
 
 ## Purpose
-Offline training of the WESAD-based stress model used by the legacy/research engine.
-Run once; produces a model file the live `legacy/wesad.py` engine loads.
+Offline training, feature extraction and dataset experiments. Not part of the live
+pipeline. Each script computes ROOT from its depth and reads `data/` / `datasets/`
+/ writes `models/` from the repo root. Run from the repo root, e.g.
+`python train/results/states/states_wesad.py`.
 
-## Inputs
-- The **WESAD** dataset (chest-ECG + wrist signals; ~17 GB unzipped) under `datasets/`.
-- Chest ECG → R-peaks → IBI, fed through the **same** server HRV code
-  (`compute_features.compute_hrv_from_entries`) so features match production.
+Organised by role:
 
-## Outputs
-- A trained **RandomForest** classifier (rest vs stress), saved under `models/`
-  (mounted into the compute container). Reported: accuracy ≈ 0.836, stress F1 ≈ 0.653.
-- Used live to emit `p_stress` on `biofizic/legacy/wesad`.
+## `models/` - produce the live `.joblib` bundles
+The compute container loads these from `models/`. Re-run only to retrain.
 
-## Key files
-| File | Role |
+| File | Produces |
 |---|---|
-| `train_wesad.py` | Load WESAD → R-peaks → our HRV features → RandomForest with LOSO cross-validation → save model |
+| `train_wesad.py` | `wesad_rf.joblib` - RandomForest rest-vs-stress (LOSO ~0.84) |
+| `train_valence_wesad.py` | `valence_wesad.joblib` - WESAD valence (stress-vs-amusement) |
+| `train_valence_eevr.py` | `valence_eevr.joblib` - EEVR-trained valence |
+| `train_valence_case.py` | `valence_case.joblib` - CASE-trained valence |
+| `deap_train_valence.py` | `deap_valence_fd.joblib` - DEAP frequency-domain valence |
 
-## Data flow
-```
-WESAD chest ECG ─▶ R-peaks ─▶ IBI ─▶ compute_hrv_from_entries (same as server)
-                                              │
-                                  RandomForest (LOSO CV) ─▶ models/wesad_*.pkl
-                                              │
-                              (live) legacy/wesad.py ─▶ p_stress
-```
+## `extract/` - build the cached feature matrices
+Run once per dataset; output `data/*.npz` (gitignored, regenerable).
 
-## Depends on / Used by
-- **Depends on:** `compute_features` (shared HRV), scikit-learn, the WESAD dataset.
-- **Used by:** `biofizic/legacy/wesad.py` at runtime; the Determinist-vs-WESAD dashboard.
-- Caveat (thesis): WESAD is chest ECG / E4 wrist; applying it to GW7 wrist PPG is a
-  domain shift — expected to be noisier / more false-positive (the point of the comparison).
+| File | Builds |
+|---|---|
+| `case_extract.py` | CASE FD + morphological PPG features |
+| `emowear_extract.py` | EmoWear (Empatica E4 BVP) features |
+| `deap_extract_features.py` | DEAP features |
+
+## `results/` - the dataset experiments behind the thesis numbers
+LOSO + balanced accuracy throughout. The graded-valence conclusion (WESAD 80% ->
+CASE 62% -> EmoWear/DEAP ~50%) comes from here. Grouped by the thesis question
+each one answers:
+
+### `results/arousal/` - does arousal work? (the spine)
+| File | What it answers |
+|---|---|
+| `arousal_validate.py` | Our arousal estimator vs labelled arousal (CASE + WESAD) |
+| `quadrant_classifier.py` | 4-quadrant Russell classifier on WESAD (honest best number) |
+
+### `results/valence/` - why valence is weak (the rigorous negative result)
+| File | What it answers |
+|---|---|
+| `wesad_explain.py` | SHAP: why the WESAD valence model decides as it does (HR in disguise) |
+| `case_valence_stratified.py` | CASE valence, arousal-matched (the decisive test, ~62%) |
+| `eevr_valence_stratified.py` | EEVR valence, arousal-stratified (~56%) |
+| `case_analyze.py` | CASE valence + arousal LOSO with all refinements |
+| `emowear_analyze.py` | EmoWear valence + arousal (~50% - dataset, not method) |
+
+### `results/states/` - native states beat forced valence (the pivot)
+| File | What it answers |
+|---|---|
+| `states_wesad.py` | WESAD native states: stress-vs-calm 86% vs forced valence 58% |
+| `states_eevr_case.py` | Same view on EEVR + CASE (arousal collapses on weak clip stimuli) |
+
+### `results/discomfort/` - the 2nd axis, and what transfers to the watch
+| File | What it answers |
+|---|---|
+| `discomfort_features.py` | Where discomfort lives beyond arousal (pulse morphology, WESAD) |
+| `my_domain_shift.py` | My real 100 Hz watch signal vs the training distribution |
+| `discomfort_transferable.py` | The detector that survives on the wrist (HRV/RMSSD only) |
+
+### `results/validation/` - honesty + methodological critique
+| File | What it answers |
+|---|---|
+| `split_inflation.py` | Random split vs LOSO - the inflation WEARS/Nandini report as success |
+| `feedback_validate.py` | The 3 valence models vs the user's OWN feedback labels (Phase A) |
+| `galaxy_quality.py` | GalaxyPPG hardware diagnostic: Galaxy IBI vs Polar ECG (not valence) |
+| `wesad_healthcheck.py` | Sanity: does the feature pipeline separate stress on WESAD |
+
+## Note on cross-script imports
+`results/valence/case_valence_stratified.py` imports from
+`results/valence/eevr_valence_stratified.py` (both in `valence/`), referenced as
+`train.results.valence.<name>`. `train_valence_case.py` (in `models/`) reuses the
+CASE stratification from `train.results.valence.case_valence_stratified`.

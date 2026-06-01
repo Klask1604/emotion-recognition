@@ -33,7 +33,7 @@ from scipy.signal import butter, filtfilt, find_peaks
 from scipy.stats import spearmanr
 
 warnings.filterwarnings("ignore")
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 from affectus.shared.hrv.metrics import compute_baevsky_indices  # noqa: E402

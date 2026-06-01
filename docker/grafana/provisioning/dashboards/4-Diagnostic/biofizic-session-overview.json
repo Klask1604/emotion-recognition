@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-session-overview",
-  "title": "Diagnostic — Session Summary (HR, RMSSD, motion)",
+  "title": "Diagnostic - Session Summary (HR, RMSSD, motion)",
   "tags": [
     "biofizic",
     "session"
@@ -13,7 +13,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "HR & RMSSD — should move inversely if valid",
+      "title": "HR & RMSSD - should move inversely if valid",
       "type": "timeseries",
       "gridPos": {
         "h": 7,
@@ -82,7 +82,7 @@
     },
     {
       "id": 2,
-      "title": "Stress index & z-score — raw vs vs-your-baseline",
+      "title": "Stress index & z-score - raw vs vs-your-baseline",
       "type": "timeseries",
       "gridPos": {
         "h": 7,
@@ -139,7 +139,7 @@
     },
     {
       "id": 3,
-      "title": "Motion timeline — still vs moving",
+      "title": "Motion timeline - still vs moving",
       "type": "state-timeline",
       "gridPos": {
         "h": 4,
@@ -187,7 +187,7 @@
     },
     {
       "id": 4,
-      "title": "Acceleration RMS — how much you moved",
+      "title": "Acceleration RMS - how much you moved",
       "type": "timeseries",
       "gridPos": {
         "h": 6,
@@ -304,7 +304,7 @@
     },
     {
       "id": 6,
-      "title": "Label agreement — 5=Kubios & personal agree, 0=differ",
+      "title": "Label agreement - 5=Kubios & personal agree, 0=differ",
       "type": "timeseries",
       "gridPos": {
         "h": 5,

@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-valence-3models",
-  "title": "Finding — Valence: 3 models live (WESAD vs EEVR vs CASE)",
+  "title": "Finding - Valence: 3 models live (WESAD vs EEVR vs CASE)",
   "tags": ["biofizic", "valence", "comparison"],
   "timezone": "browser",
   "schemaVersion": 39,
@@ -16,12 +16,12 @@
       "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
       "options": {
         "mode": "markdown",
-        "content": "**Three valence models, same 33-feature PPG extractor, running live on YOUR watch signal in parallel.** Each predicts `valence_z` ∈ [-1, +1] (>0 = positive). Observed-only — none feeds the watch verdict.\n\n| Model | What it learned | LOSO (arousal-matched) | Verdict |\n|---|---|---|---|\n| **WESAD** | stress vs amusement | '82%' | **arousal in disguise** — SHAP shows it leans on mean HR, not valence |\n| **EEVR** | VR high-arousal HV vs LV | **56%** | **chance** — VR design-truth carries no cross-subject valence in PPG |\n| **CASE** | lived joystick HV vs LV, arousal held constant | **~58%** (p=0.014) | **real but weak** — true valence signal, driven by HRV LF/HF balance |\n\n**How to read the chart:** when the three lines AGREE, the window has a strong, unambiguous affect (all models pick it up). When they DIVERGE, the signal is weak and valence is unreliable — exactly the low-SNR regime where PPG valence fails. This divergence IS the thesis result: valence from wrist PPG is only separable at strong, lived induction, and even then modest (~58%)."
+        "content": "**Three valence models, same 33-feature PPG extractor, running live on YOUR watch signal in parallel.** Each predicts `valence_z` ∈ [-1, +1] (>0 = positive). Observed-only - none feeds the watch verdict.\n\n| Model | What it learned | LOSO (arousal-matched) | Verdict |\n|---|---|---|---|\n| **WESAD** | stress vs amusement | '82%' | **arousal in disguise** - SHAP shows it leans on mean HR, not valence |\n| **EEVR** | VR high-arousal HV vs LV | **56%** | **chance** - VR design-truth carries no cross-subject valence in PPG |\n| **CASE** | lived joystick HV vs LV, arousal held constant | **~58%** (p=0.014) | **real but weak** - true valence signal, driven by HRV LF/HF balance |\n\n**How to read the chart:** when the three lines AGREE, the window has a strong, unambiguous affect (all models pick it up). When they DIVERGE, the signal is weak and valence is unreliable - exactly the low-SNR regime where PPG valence fails. This divergence IS the thesis result: valence from wrist PPG is only separable at strong, lived induction, and even then modest (~58%)."
       }
     },
     {
       "id": 1,
-      "title": "valence_z — WESAD vs EEVR vs CASE (live, same signal). Agreement = strong affect; divergence = unreliable.",
+      "title": "valence_z - WESAD vs EEVR vs CASE (live, same signal). Agreement = strong affect; divergence = unreliable.",
       "type": "timeseries",
       "gridPos": { "h": 13, "w": 24, "x": 0, "y": 6 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
@@ -69,7 +69,7 @@
     },
     {
       "id": 2,
-      "title": "Model agreement — std-dev across the 3 valence_z (low = models agree = trustworthy; high = divergent = unreliable)",
+      "title": "Model agreement - std-dev across the 3 valence_z (low = models agree = trustworthy; high = divergent = unreliable)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 19 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },

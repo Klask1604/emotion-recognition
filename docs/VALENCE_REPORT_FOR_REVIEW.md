@@ -228,8 +228,8 @@ graded limitation**, not a delivered feature.
 ---
 
 ## 6. Reproducibility pointers (for a reviewer with the repo)
-- Training: `train/train_valence_wesad.py` (WESAD stress-vs-amusement, LOSO report,
-  saves `models/valence_wesad.joblib`).
+- Training: `train/models/train_valence_wesad.py` (WESAD stress-vs-amusement, LOSO
+  report, saves `models/valence_wesad.joblib`).
 - Shared feature extractor (train/serve parity): `affectus/legacy/valence_features.py`
   (includes `normalize_ppg_window`, the scale-invariance fix).
 - Feature families: `affectus/legacy/ppg_vascular_features.py`,
@@ -237,5 +237,5 @@ graded limitation**, not a delivered feature.
 - Live channel + personal calibration: `affectus/shared/valence_baseline.py`,
   `affectus/shared/emotion.py` (verdict + stabiliser),
   `affectus/legacy/valence_wesad_engine.py`.
-- Cross-dataset scripts: `train/case_extract.py`, `train/emowear_extract.py`,
-  `train/test_all_features.py`.
+- Cross-dataset scripts: `train/extract/case_extract.py`,
+  `train/extract/emowear_extract.py`; per-dataset results in `train/results/`.

@@ -24,12 +24,12 @@ from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 warnings.filterwarnings("ignore")
 
 from affectus.legacy.valence_features import VALENCE_FEATURE_NAMES  # noqa: E402
-from train.case_valence_stratified import HV_THR, LV_THR, HI_AROUSAL, _match_arousal  # noqa: E402
+from train.results.valence.case_valence_stratified import HV_THR, LV_THR, HI_AROUSAL, _match_arousal  # noqa: E402
 
 CACHE = ROOT / "data" / "case_stratified.npz"
 OUT = ROOT / "models" / "valence_case.joblib"

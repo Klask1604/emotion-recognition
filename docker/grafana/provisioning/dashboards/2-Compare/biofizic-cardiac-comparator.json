@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-cardiac-comparator",
-  "title": "Compare — PPG vs HR Sources",
+  "title": "Compare - PPG vs HR Sources",
   "tags": [
     "biofizic",
     "test",
@@ -14,7 +14,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "PPG green: on-demand (100 Hz) vs continuous (25 Hz) — same wave?",
+      "title": "PPG green: on-demand (100 Hz) vs continuous (25 Hz) - same wave?",
       "type": "timeseries",
       "gridPos": {
         "h": 9,
@@ -177,7 +177,7 @@
     },
     {
       "id": 3,
-      "title": "RMSSD (ms): same three sources + production — accuracy thesis answer",
+      "title": "RMSSD (ms): same three sources + production - accuracy thesis answer",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -271,7 +271,7 @@
     },
     {
       "id": 4,
-      "title": "Mean HR — ppg_ondemand",
+      "title": "Mean HR - ppg_ondemand",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -332,7 +332,7 @@
     },
     {
       "id": 5,
-      "title": "Mean HR — ppg_continuous",
+      "title": "Mean HR - ppg_continuous",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -393,7 +393,7 @@
     },
     {
       "id": 6,
-      "title": "Mean HR — hr_continuous (SDK)",
+      "title": "Mean HR - hr_continuous (SDK)",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -454,7 +454,7 @@
     },
     {
       "id": 7,
-      "title": "Mean RMSSD — ppg_ondemand",
+      "title": "Mean RMSSD - ppg_ondemand",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -515,7 +515,7 @@
     },
     {
       "id": 8,
-      "title": "Mean RMSSD — ppg_continuous",
+      "title": "Mean RMSSD - ppg_continuous",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -576,7 +576,7 @@
     },
     {
       "id": 9,
-      "title": "Mean RMSSD — hr_continuous (SDK)",
+      "title": "Mean RMSSD - hr_continuous (SDK)",
       "type": "stat",
       "gridPos": {
         "h": 4,

@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-window-comparison",
-  "title": "Compare — HRV Windows (30/60/90s)",
+  "title": "Compare - HRV Windows (30/60/90s)",
   "tags": [
     "biofizic",
     "windows"
@@ -13,7 +13,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "RMSSD per window — convergence = stable HRV",
+      "title": "RMSSD per window - convergence = stable HRV",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -71,7 +71,7 @@
     },
     {
       "id": 2,
-      "title": "Stress index per window — short vs long agreement",
+      "title": "Stress index per window - short vs long agreement",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -128,7 +128,7 @@
     },
     {
       "id": 3,
-      "title": "IBI count per window — enough beats to trust it?",
+      "title": "IBI count per window - enough beats to trust it?",
       "type": "timeseries",
       "gridPos": {
         "h": 8,

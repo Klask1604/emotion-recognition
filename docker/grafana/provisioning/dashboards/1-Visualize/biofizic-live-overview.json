@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-live-overview",
-  "title": "Live — Current State (arousal, HR, quality)",
+  "title": "Live - Current State (arousal, HR, quality)",
   "tags": [
     "biofizic",
     "overview"
@@ -133,7 +133,7 @@
     },
     {
       "id": 3,
-      "title": "IBI buffer — beats available for HRV",
+      "title": "IBI buffer - beats available for HRV",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -253,7 +253,7 @@
     },
     {
       "id": 5,
-      "title": "Arousal 1Hz — live activation trend",
+      "title": "Arousal 1Hz - live activation trend",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -312,7 +312,7 @@
     },
     {
       "id": 6,
-      "title": "RMSSD & stress index (live) — the markers behind arousal",
+      "title": "RMSSD & stress index (live) - the markers behind arousal",
       "type": "timeseries",
       "gridPos": {
         "h": 8,

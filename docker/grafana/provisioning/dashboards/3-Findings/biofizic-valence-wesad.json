@@ -1,6 +1,6 @@
 {
   "uid": "biofizic-valence-wesad",
-  "title": "Finding — WESAD Valence Live (transfers after scale-fix)",
+  "title": "Finding - WESAD Valence Live (transfers after scale-fix)",
   "tags": [
     "biofizic",
     "valence",
@@ -28,7 +28,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "**WESAD valence model, observed-only.** The same model + extractor used by the production fusion channel, but here it is logged side-by-side with the verdict — it does **NOT** feed `biofizic/state`. Purpose: judge how well the 85% LOSO model transfers to the watch before trusting it. `valence_z` > 0 = positive (amusement-like), < 0 = negative (stress-like). To validate: induce a known state (e.g. funny clip vs stressor) and check the sign/level here. Enable with `ENABLE_VALENCE_WESAD = True` in `affectus/legacy/toggles.py` (local research build only)."
+        "content": "**WESAD valence model, observed-only.** The same model + extractor used by the production fusion channel, but here it is logged side-by-side with the verdict - it does **NOT** feed `biofizic/state`. Purpose: judge how well the 85% LOSO model transfers to the watch before trusting it. `valence_z` > 0 = positive (amusement-like), < 0 = negative (stress-like). To validate: induce a known state (e.g. funny clip vs stressor) and check the sign/level here. Enable with `ENABLE_VALENCE_WESAD = True` in `affectus/legacy/toggles.py` (local research build only)."
       }
     },
     {
@@ -168,7 +168,7 @@
     },
     {
       "id": 3,
-      "title": "Production arousal verdict (for comparison — valence is orthogonal)",
+      "title": "Production arousal verdict (for comparison - valence is orthogonal)",
       "type": "timeseries",
       "gridPos": {
         "h": 7,

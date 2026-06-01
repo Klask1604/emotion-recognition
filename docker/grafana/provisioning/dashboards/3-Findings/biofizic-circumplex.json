@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-circumplex",
-  "title": "Finding — Emotion Circumplex (arousal × calibrated valence)",
+  "title": "Finding - Emotion Circumplex (arousal × calibrated valence)",
   "tags": ["biofizic", "circumplex", "emotion"],
   "timezone": "browser",
   "schemaVersion": 39,
@@ -16,12 +16,12 @@
       "gridPos": { "h": 5, "w": 24, "x": 0, "y": 0 },
       "options": {
         "mode": "markdown",
-        "content": "**Russell circumplex (1980): emotion = quadrant of AROUSAL (Y) × VALENCE (X).** Both axes are PERSONAL Z-SCORES centred on 0 (your own resting baseline = origin), sharing one scale (~[-1.5, +1.5]). Points are clamped to the ring so a large z stays on the circle instead of flying off-axis.\n\n- **AROUSAL** (Y): `z_filtered` — HRV+HR fused, personal z-score, Kalman-smoothed. 0 = resting baseline; >0 = more activated. **Validated, reliable axis.**\n- **VALENCE** (X): `valence_personal_60s` — WESAD PPG model, personally calibrated (neutral = measured resting median), 60 s smoothed. ⚠️ **Weak axis:** arousal-matched, PPG valence is only ~58% cross-subject at best (CASE), ~chance on VR (EEVR), and WESAD's apparent 82% is largely residual AROUSAL (HR), shown by SHAP. Treat valence as a low-confidence tendency, not a verdict. See the *Valence — 3 models* dashboard.\n- **Dead-band**: width = `valence_deadband` (0.5·your smoothed-valence spread) — measured, not invented.\n\nShown only after calibration locks."
+        "content": "**Russell circumplex (1980): emotion = quadrant of AROUSAL (Y) × VALENCE (X).** Both axes are PERSONAL Z-SCORES centred on 0 (your own resting baseline = origin), sharing one scale (~[-1.5, +1.5]). Points are clamped to the ring so a large z stays on the circle instead of flying off-axis.\n\n- **AROUSAL** (Y): `z_filtered` - HRV+HR fused, personal z-score, Kalman-smoothed. 0 = resting baseline; >0 = more activated. **Validated, reliable axis.**\n- **VALENCE** (X): `valence_personal_60s` - WESAD PPG model, personally calibrated (neutral = measured resting median), 60 s smoothed. ⚠️ **Weak axis:** arousal-matched, PPG valence is only ~58% cross-subject at best (CASE), ~chance on VR (EEVR), and WESAD's apparent 82% is largely residual AROUSAL (HR), shown by SHAP. Treat valence as a low-confidence tendency, not a verdict. See the *Valence - 3 models* dashboard.\n- **Dead-band**: width = `valence_deadband` (0.5·your smoothed-valence spread) - measured, not invented.\n\nShown only after calibration locks."
       }
     },
     {
       "id": 1,
-      "title": "Circumplex — blue=now (X=calibrated valence, Y=arousal). NW Fear/Anger · NE Happy/Excited · SW Sad/Bored · SE Calm/Relaxed.",
+      "title": "Circumplex - blue=now (X=calibrated valence, Y=arousal). NW Fear/Anger · NE Happy/Excited · SW Sad/Bored · SE Calm/Relaxed.",
       "type": "xychart",
       "gridPos": { "h": 18, "w": 14, "x": 0, "y": 5 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },

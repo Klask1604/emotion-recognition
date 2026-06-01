@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-affect-analysis",
-  "title": "Finding — Affect analysis (arousal × valence metrics, explainable)",
+  "title": "Finding - Affect analysis (arousal × valence metrics, explainable)",
   "tags": ["biofizic", "affect", "analysis"],
   "timezone": "browser",
   "schemaVersion": 39,
@@ -23,7 +23,7 @@
     { "id": 1, "type": "row", "title": "The two Russell axes", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 4 }, "collapsed": false },
     {
       "id": 11,
-      "title": "AROUSAL (z_filtered) vs the 3 VALENCE models (valence_personal_60s) — the full 2D state, numeric",
+      "title": "AROUSAL (z_filtered) vs the 3 VALENCE models (valence_personal_60s) - the full 2D state, numeric",
       "type": "timeseries",
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 5 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
@@ -44,7 +44,7 @@
     { "id": 2, "type": "row", "title": "What arousal is made of", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }, "collapsed": false },
     {
       "id": 21,
-      "title": "z_hr vs z_hrv — the two components fused into arousal (z_filtered)",
+      "title": "z_hr vs z_hrv - the two components fused into arousal (z_filtered)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
@@ -57,7 +57,7 @@
     },
     {
       "id": 22,
-      "title": "rmssd (ms) + stress_index — the raw HRV behind arousal",
+      "title": "rmssd (ms) + stress_index - the raw HRV behind arousal",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
@@ -87,7 +87,7 @@
     { "id": 4, "type": "row", "title": "Is this reading trustworthy?", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 }, "collapsed": false },
     {
       "id": 41,
-      "title": "signal_quality + confidence + artifact_rate — high quality & low artifacts = trust the verdict",
+      "title": "signal_quality + confidence + artifact_rate - high quality & low artifacts = trust the verdict",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 14, "x": 0, "y": 31 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },

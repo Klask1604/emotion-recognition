@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-valence-compare",
-  "title": "Finding — Valence Methods (PPA vs frequency-domain)",
+  "title": "Finding - Valence Methods (PPA vs frequency-domain)",
   "tags": [
     "biofizic",
     "legacy",
@@ -24,12 +24,12 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "**Two valence approaches side by side.** TOP-LEFT: the OLD ad-hoc heuristic (valence = 0.55·tanh(RMSSD_z) − 0.35·tanh(PPA_z)) — invented coefficients, no literature basis. TOP-RIGHT: the NEW PPG frequency-domain features (Frontiers 2025 replication) — the harmonic ratios that *carry* valence information in the literature. Note: the new method outputs FEATURES, not a verdict — a real valence score needs an SVM trained on labelled data. This dashboard shows (a) src_hz (25 vs 100), (b) whether the new features are more stable / structured than the old noisy heuristic. Neither feeds the watch (which shows arousal only)."
+        "content": "**Two valence approaches side by side.** TOP-LEFT: the OLD ad-hoc heuristic (valence = 0.55·tanh(RMSSD_z) − 0.35·tanh(PPA_z)) - invented coefficients, no literature basis. TOP-RIGHT: the NEW PPG frequency-domain features (Frontiers 2025 replication) - the harmonic ratios that *carry* valence information in the literature. Note: the new method outputs FEATURES, not a verdict - a real valence score needs an SVM trained on labelled data. This dashboard shows (a) src_hz (25 vs 100), (b) whether the new features are more stable / structured than the old noisy heuristic. Neither feeds the watch (which shows arousal only)."
       }
     },
     {
       "id": 1,
-      "title": "OLD heuristic valence [-1,1] — noisy, no structure",
+      "title": "OLD heuristic valence [-1,1] - noisy, no structure",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -211,7 +211,7 @@
     },
     {
       "id": 4,
-      "title": "Normalised harmonic powers (BF/FHF/SHF must sum to 1) — spectral shape",
+      "title": "Normalised harmonic powers (BF/FHF/SHF must sum to 1) - spectral shape",
       "type": "timeseries",
       "gridPos": {
         "h": 6,

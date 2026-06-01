@@ -47,7 +47,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
 warnings.filterwarnings("ignore")
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 from affectus.legacy.valence_ppg_fd import extract_valence_fd_features  # noqa: E402

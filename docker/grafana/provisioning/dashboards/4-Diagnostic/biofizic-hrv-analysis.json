@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-hrv-analysis",
-  "title": "Diagnostic — HRV Metrics (RMSSD, stress index)",
+  "title": "Diagnostic - HRV Metrics (RMSSD, stress index)",
   "tags": [
     "biofizic",
     "hrv"
@@ -13,7 +13,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "RMSSD 30s (now) — higher = calmer",
+      "title": "RMSSD 30s (now) - higher = calmer",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -74,7 +74,7 @@
     },
     {
       "id": 2,
-      "title": "Stress index (now) — higher = more stress",
+      "title": "Stress index (now) - higher = more stress",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -254,7 +254,7 @@
     },
     {
       "id": 5,
-      "title": "RMSSD 30/60/90s — short reacts fast, long is stable",
+      "title": "RMSSD 30/60/90s - short reacts fast, long is stable",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -312,7 +312,7 @@
     },
     {
       "id": 6,
-      "title": "Stress index 30/60/90s — compare window responsiveness",
+      "title": "Stress index 30/60/90s - compare window responsiveness",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -369,7 +369,7 @@
     },
     {
       "id": 7,
-      "title": "HR vs RMSSD — should move inversely if signal is valid",
+      "title": "HR vs RMSSD - should move inversely if signal is valid",
       "type": "timeseries",
       "gridPos": {
         "h": 8,

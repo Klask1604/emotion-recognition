@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-live-sync",
-  "title": "Diagnostic — HR/RMSSD Alignment Check",
+  "title": "Diagnostic - HR/RMSSD Alignment Check",
   "tags": [
     "biofizic",
     "live"
@@ -13,7 +13,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "HR: SDK instant vs window mean — same trend if aligned",
+      "title": "HR: SDK instant vs window mean - same trend if aligned",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -83,7 +83,7 @@
     },
     {
       "id": 2,
-      "title": "HR vs RMSSD — inverse & time-aligned if sync is correct",
+      "title": "HR vs RMSSD - inverse & time-aligned if sync is correct",
       "type": "timeseries",
       "gridPos": {
         "h": 8,

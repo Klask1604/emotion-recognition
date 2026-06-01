@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-stream-sync",
-  "title": "Diagnostic — Stream Sync (timestamps, seq)",
+  "title": "Diagnostic - Stream Sync (timestamps, seq)",
   "tags": [
     "biofizic",
     "diagnostics",
@@ -14,7 +14,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "Anchor delay (now, ms) — should be >=0",
+      "title": "Anchor delay (now, ms) - should be >=0",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -74,7 +74,7 @@
     },
     {
       "id": 2,
-      "title": "Seq (now) — should increment by 1/s",
+      "title": "Seq (now) - should increment by 1/s",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -254,7 +254,7 @@
     },
     {
       "id": 5,
-      "title": "Anchor delay over time — stays >=0 if batch is atomic",
+      "title": "Anchor delay over time - stays >=0 if batch is atomic",
       "type": "timeseries",
       "gridPos": {
         "h": 7,
@@ -312,7 +312,7 @@
     },
     {
       "id": 6,
-      "title": "IBI per batch — bursty Samsung HR (~every 4s)",
+      "title": "IBI per batch - bursty Samsung HR (~every 4s)",
       "type": "timeseries",
       "gridPos": {
         "h": 7,
@@ -428,7 +428,7 @@
     },
     {
       "id": 8,
-      "title": "Skin temp age at publish (ms) — sensor freshness",
+      "title": "Skin temp age at publish (ms) - sensor freshness",
       "type": "timeseries",
       "gridPos": {
         "h": 6,
@@ -486,7 +486,7 @@
     },
     {
       "id": 9,
-      "title": "Seq over time — +1 per second = no dropped batches",
+      "title": "Seq over time - +1 per second = no dropped batches",
       "type": "timeseries",
       "gridPos": {
         "h": 5,

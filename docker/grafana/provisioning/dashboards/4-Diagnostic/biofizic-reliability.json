@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-reliability",
-  "title": "Diagnostic — Verdict Reliability (which channel drives it)",
+  "title": "Diagnostic - Verdict Reliability (which channel drives it)",
   "tags": [
     "biofizic",
     "live"
@@ -13,7 +13,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "Arousal vs confidence Q — is the verdict trustworthy now?",
+      "title": "Arousal vs confidence Q - is the verdict trustworthy now?",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -82,7 +82,7 @@
     },
     {
       "id": 2,
-      "title": "Fusion: z_hrv vs z_hr vs z_filtered (+weight) — which channel drives it",
+      "title": "Fusion: z_hrv vs z_hr vs z_filtered (+weight) - which channel drives it",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -175,7 +175,7 @@
     },
     {
       "id": 3,
-      "title": "Kalman gain & artifacts — low gain = verdict held (ignores noise)",
+      "title": "Kalman gain & artifacts - low gain = verdict held (ignores noise)",
       "type": "timeseries",
       "gridPos": {
         "h": 8,

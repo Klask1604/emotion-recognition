@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-emotion-per-model",
-  "title": "Finding — Emotion per model (WESAD · EEVR · CASE circumplex + timeline)",
+  "title": "Finding - Emotion per model (WESAD · EEVR · CASE circumplex + timeline)",
   "tags": ["biofizic", "circumplex", "emotion", "comparison"],
   "timezone": "browser",
   "schemaVersion": 39,
@@ -16,14 +16,14 @@
       "gridPos": { "h": 5, "w": 24, "x": 0, "y": 0 },
       "options": {
         "mode": "markdown",
-        "content": "**The same emotion circumplex + timeline, computed separately for each of the 3 valence models, on YOUR live signal.** Each row = one model.\n\n- **X (valence)** = that model's `valence_personal_60s` — personally calibrated on the SERVER (neutral = your own measured resting median, per model) and 60 s-smoothed, exactly like the original WESAD circumplex. Shown only after that model's baseline locks (`valence_baseline_ready`).\n- **Y (arousal)** = the same real arousal `z_filtered` for all three (arousal is shared, only valence differs between models).\n- **Quadrant**: NW fear/anger · NE happy/excited · SW sad/bored · SE calm/relaxed. Neutral dead-band = that model's own `valence_deadband`.\n\n**WESAD** ≈ arousal-in-disguise (82%, but SHAP says it's HR) · **EEVR** ≈ chance (56%) · **CASE** ≈ real offline (58%) but COLLAPSES on the watch (domain shift — outputs a near-constant, so it sits at its own neutral). Watch how the SAME instant lands in DIFFERENT quadrants per model — that disagreement is the thesis point."
+        "content": "**The same emotion circumplex + timeline, computed separately for each of the 3 valence models, on YOUR live signal.** Each row = one model.\n\n- **X (valence)** = that model's `valence_personal_60s` - personally calibrated on the SERVER (neutral = your own measured resting median, per model) and 60 s-smoothed, exactly like the original WESAD circumplex. Shown only after that model's baseline locks (`valence_baseline_ready`).\n- **Y (arousal)** = the same real arousal `z_filtered` for all three (arousal is shared, only valence differs between models).\n- **Quadrant**: NW fear/anger · NE happy/excited · SW sad/bored · SE calm/relaxed. Neutral dead-band = that model's own `valence_deadband`.\n\n**WESAD** ≈ arousal-in-disguise (82%, but SHAP says it's HR) · **EEVR** ≈ chance (56%) · **CASE** ≈ real offline (58%) but COLLAPSES on the watch (domain shift - outputs a near-constant, so it sits at its own neutral). Watch how the SAME instant lands in DIFFERENT quadrants per model - that disagreement is the thesis point."
       }
     },
 
     { "id": 1, "type": "row", "title": "WESAD", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "collapsed": false },
     {
       "id": 11,
-      "title": "WESAD — circumplex (X=valence_z re-centered, Y=arousal)",
+      "title": "WESAD - circumplex (X=valence_z re-centered, Y=arousal)",
       "type": "xychart",
       "gridPos": { "h": 11, "w": 12, "x": 0, "y": 6 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
@@ -44,7 +44,7 @@
     },
     {
       "id": 12,
-      "title": "WESAD — emotion over time",
+      "title": "WESAD - emotion over time",
       "type": "state-timeline",
       "gridPos": { "h": 11, "w": 12, "x": 12, "y": 6 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
@@ -68,7 +68,7 @@
     { "id": 2, "type": "row", "title": "EEVR", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 }, "collapsed": false },
     {
       "id": 21,
-      "title": "EEVR — circumplex (X=valence_z re-centered, Y=arousal)",
+      "title": "EEVR - circumplex (X=valence_z re-centered, Y=arousal)",
       "type": "xychart",
       "gridPos": { "h": 11, "w": 12, "x": 0, "y": 18 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
@@ -89,7 +89,7 @@
     },
     {
       "id": 22,
-      "title": "EEVR — emotion over time",
+      "title": "EEVR - emotion over time",
       "type": "state-timeline",
       "gridPos": { "h": 11, "w": 12, "x": 12, "y": 18 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
@@ -113,7 +113,7 @@
     { "id": 3, "type": "row", "title": "CASE", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 }, "collapsed": false },
     {
       "id": 31,
-      "title": "CASE — circumplex (X=valence_z re-centered, Y=arousal)",
+      "title": "CASE - circumplex (X=valence_z re-centered, Y=arousal)",
       "type": "xychart",
       "gridPos": { "h": 11, "w": 12, "x": 0, "y": 30 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
@@ -134,7 +134,7 @@
     },
     {
       "id": 32,
-      "title": "CASE — emotion over time",
+      "title": "CASE - emotion over time",
       "type": "state-timeline",
       "gridPos": { "h": 11, "w": 12, "x": 12, "y": 30 },
       "datasource": { "type": "influxdb", "uid": "biofizic-influx" },

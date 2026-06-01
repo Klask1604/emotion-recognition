@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-respiration-compare",
-  "title": "Compare — Respiration: RSA vs PPG-amplitude",
+  "title": "Compare - Respiration: RSA vs PPG-amplitude",
   "tags": [
     "biofizic",
     "legacy"
@@ -85,7 +85,7 @@
     },
     {
       "id": 2,
-      "title": "Channel confidence [0,1] — when each source is trustworthy (0 = rejected by quality gate)",
+      "title": "Channel confidence [0,1] - when each source is trustworthy (0 = rejected by quality gate)",
       "type": "timeseries",
       "gridPos": {
         "h": 9,
@@ -160,7 +160,7 @@
     },
     {
       "id": 3,
-      "title": "Spectral peak prominence (peak/median) — gate threshold = 3.0",
+      "title": "Spectral peak prominence (peak/median) - gate threshold = 3.0",
       "type": "timeseries",
       "gridPos": {
         "h": 8,

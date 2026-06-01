@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-baseline-compare",
-  "title": "Compare — Personal vs Population (Kubios)",
+  "title": "Compare - Personal vs Population (Kubios)",
   "tags": [
     "biofizic",
     "baseline"
@@ -13,7 +13,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "Kubios vs personal labels — watch where they disagree",
+      "title": "Kubios vs personal labels - watch where they disagree",
       "type": "state-timeline",
       "gridPos": {
         "h": 6,
@@ -61,7 +61,7 @@
     },
     {
       "id": 2,
-      "title": "Label levels 1-5 + agreement — gap = population vs personal differ",
+      "title": "Label levels 1-5 + agreement - gap = population vs personal differ",
       "type": "timeseries",
       "gridPos": {
         "h": 7,
@@ -201,7 +201,7 @@
     },
     {
       "id": 4,
-      "title": "Stress z-score — >0 above your rest, <0 below",
+      "title": "Stress z-score - >0 above your rest, <0 below",
       "type": "timeseries",
       "gridPos": {
         "h": 8,

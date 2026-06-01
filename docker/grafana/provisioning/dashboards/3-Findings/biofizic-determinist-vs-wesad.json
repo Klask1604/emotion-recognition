@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-determinist-vs-wesad",
-  "title": "Finding — Our Stress vs WESAD",
+  "title": "Finding - Our Stress vs WESAD",
   "tags": [
     "biofizic",
     "legacy"
@@ -13,7 +13,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "Personal z (ours) vs WESAD P(stress) — ours is steadier",
+      "title": "Personal z (ours) vs WESAD P(stress) - ours is steadier",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -82,7 +82,7 @@
     },
     {
       "id": 2,
-      "title": "Our arousal vs WESAD P(stress)x10 — WESAD over-flags on wrist",
+      "title": "Our arousal vs WESAD P(stress)x10 - WESAD over-flags on wrist",
       "type": "timeseries",
       "gridPos": {
         "h": 8,

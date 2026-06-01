@@ -35,11 +35,11 @@ import pandas as pd
 from scipy.stats import ttest_ind
 
 warnings.filterwarnings("ignore")
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-import train.eevr_valence_stratified as evs  # noqa: E402
-from train.eevr_valence_stratified import (  # noqa: E402
+import train.results.valence.eevr_valence_stratified as evs  # noqa: E402
+from train.results.valence.eevr_valence_stratified import (  # noqa: E402
     FAMILY_VASC_IDX,
     FAMILY_NONVASC_IDX,
     feats_family,

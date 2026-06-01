@@ -107,8 +107,7 @@ production free of scipy/scikit-learn):
 |--------|--------------|-------|
 | `ENABLE_RAW_PPG` | parse raw PPG from the watch | `PUBLISH_RAW_PPG` on the watch |
 | `ENABLE_PPG_PEAKS` | band-pass + peak detection, PPA, IBI-from-PPG | scipy |
-| `ENABLE_WESAD` | WESAD RandomForest P(stress) in parallel | scikit-learn + `python train/train_wesad.py` |
-| `ENABLE_VALENCE` | ad-hoc valence heuristic (documented negative result) | raw PPG |
+| `ENABLE_WESAD` | WESAD RandomForest P(stress) in parallel | scikit-learn + `python train/models/train_wesad.py` |
 
 WESAD is a deliberate **domain-shift demonstration** (chest ECG / E4 wrist, not
 GW7) — see `docs/THESIS_LIMITATIONS.md`. The earlier WISDM HAR classifier was

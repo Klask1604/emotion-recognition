@@ -27,7 +27,7 @@ from pathlib import Path
 import numpy as np
 
 warnings.filterwarnings("ignore")
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 from affectus.legacy.valence_features import VALENCE_FEATURE_NAMES  # noqa: E402

@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "biofizic-ppg-failure",
-  "title": "Finding — PPG Collapses Under Motion",
+  "title": "Finding - PPG Collapses Under Motion",
   "tags": [
     "biofizic",
     "legacy"
@@ -13,7 +13,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "Pulse amplitude (PPA) vs accel — PPA collapses when you move",
+      "title": "Pulse amplitude (PPA) vs accel - PPA collapses when you move",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -82,7 +82,7 @@
     },
     {
       "id": 2,
-      "title": "PPA z-score vs cardiac-band motion — inverse under motion",
+      "title": "PPA z-score vs cardiac-band motion - inverse under motion",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
