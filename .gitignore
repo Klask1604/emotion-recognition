@@ -10,8 +10,9 @@ __pycache__/
 # Secrets and local env
 .env
 
-# Runtime state (per-user calibration)
+# Runtime state (per-user calibration) + personal biometric labels
 data/*.json
+data/*.jsonl
 !data/.gitkeep
 
 # Large datasets (download locally, see README)
