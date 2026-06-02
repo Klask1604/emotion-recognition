@@ -1,187 +1,110 @@
-# Biofizic — server & compute pipeline
+# Biofizic — Architecture (master / high-level)
 
-Python backend for wrist-based physiological monitoring: MQTT ingestion, HRV analysis, affect heuristics, and Grafana dashboards.
+Real-time physiological-state classifier for VR. A **Galaxy Watch 7** streams sensor
+data over MQTT to a **Python server** (Docker) that turns it into a continuous arousal
+verdict, stores everything in **InfluxDB 3**, and visualizes it in **Grafana**. The
+watch also renders the live verdict.
 
-Companion Android app (sensor acquisition): [biofizic-android](https://github.com/YOUR_USER/biofizic) — replace with your repo URL.
+This file defines the system top-down. Each big folder has its own `ARCHITECTURE.md`
+with exact **input → output**; this master links them and shows how they connect.
+For the narrative explanation + real session reports, see [`docs/architecture.md`](docs/architecture.md).
 
-## What it does
+---
 
-```
-Galaxy Watch (Android app)
-  -> MQTT: acquisition/batch @ 1 Hz (IBI + motion stats + cardiac-band energy + HR)
-       v
-compute-engine     -> HRV 30 s, personal baseline (robust z), signal-quality gate, arousal
-mqtt-logger        -> InfluxDB 3
-Grafana            -> session dashboards
-       v
-Watch UI <- biofizic/state/live (1 Hz, hysteresis) + biofizic/state (retained epoch bootstrap)
-```
-
-**Production path:** all decisions run in `services/compute_engine.py` → `biofizic/pipeline/PhysiologyPipeline`. There is no separate fusion or ML emotion service in the default stack.
-
-### Outputs (30 s epoch)
-
-| Field | Meaning |
-|-------|---------|
-| `arousal_10` | 1–10 arousal: `round(1 + 9·Φ(z))` of the personal stress-index z-score once the baseline is locked, else the population Kubios zone |
-| `emotion` | Display label (Relaxat … Ridicat) from arousal |
-| `emotion_baseline` | Personal-baseline label on the same scale |
-| `labels_agree` | Whether the population Kubios zone label matches the personal-baseline label (Cohen's κ over a session) |
-| `signal_quality` | Q ∈ [0,1] confidence from the signal-quality gate (IBI artifact rate + cardiac-band motion energy) |
-| `alert` | CUSUM sustained-stress alert on the personal z-score |
-
-## Repository layout
+## Big picture
 
 ```
-biofizic/           Core library (signal, HRV, baseline, decision, signal quality, pipeline)
-services/           Docker entrypoints (compute_engine, mqtt_logger)
-scripts/            Grafana dashboard generator, reports
-docker/             InfluxDB + Grafana provisioning
-data/               Per-user baseline JSON (gitignored)
+┌─────────────────────────┐         MQTT          ┌──────────────────────────┐
+│   GALAXY WATCH 7 (Kotlin)│  ───── (WiFi) ─────▶  │   SERVER (Python, Docker) │
+│  sensors → IBI pipeline  │  biofizic/acquisition │  compute-engine           │
+│  → AcquisitionAssembler  │  /batch (1 Hz, atomic)│  (compute pipeline)       │
+│  → MQTT                  │  biofizic/cmd/calibrate│ mqtt-logger (writes DB)  │
+│  UI (Compose) ◀──────────│  biofizic/state, ...  │  ──▶ InfluxDB 3 ──▶ Grafana
+└─────────────────────────┘  ◀─────────────────── └──────────────────────────┘
 ```
 
-## Requirements
+Two server processes, both MQTT clients (they never call each other):
+- **compute-engine** — computes the verdict.
+- **mqtt-logger** — writes every topic to InfluxDB for the dashboards.
 
-- Docker & Docker Compose
-- Python 3.11+ (for local scripts / training)
-- An MQTT broker reachable from watch and server
-- Samsung Galaxy Watch with Health SDK (see Android repo)
+---
 
-## Quick start
-
-1. Copy environment template and set your broker/database:
-
-```bash
-cp .env.example .env
-# Edit MQTT_BROKER, MQTT_PORT, INFLUX_DATABASE, Grafana credentials
-```
-
-2. Build and run (4 services: compute-engine, mqtt-logger, influxdb, grafana):
-
-```bash
-docker compose build
-docker compose up -d
-```
-
-3. Regenerate Grafana dashboards after code changes:
-
-```bash
-python scripts/generate_grafana_dashboards.py
-docker compose restart grafana
-```
-
-4. Open Grafana at `http://localhost:3000` (default admin credentials from `.env`).
-
-### Fix duplicate Grafana dashboards
-
-Duplicates usually come from the Grafana data volume keeping old UI copies while file provisioning re-imports.
-
-```bash
-docker compose stop grafana
-docker volume rm biofizic_grafana-data   # name may be <project>_grafana-data
-docker compose up -d grafana
-```
-
-Provisioning is configured with `allowUiUpdates: false` so file UIDs stay authoritative.
-
-## MQTT topics (summary)
-
-**Watch -> server:** `biofizic/acquisition/batch` (1 Hz schema v2; IBI flushed every 1 s), `biofizic/cmd/calibrate`
-**Server -> watch:** `biofizic/state/live` (UI 1 Hz, hysteresis-smoothed), `biofizic/state` (retained epoch decision, doubles as reconnect bootstrap), `biofizic/calibration/status`
-**Research/legacy (only when toggled on):** `biofizic/legacy/ppg`, `biofizic/legacy/wesad`, `biofizic/legacy/valence` — never feed VR
-**Grafana / Influx (mqtt-logger):** `state`, `state/live`, `state/windows`, `acquisition/batch`, `all_data_live` (unrolled raw PPG/IBI), `legacy/*`
-
-## Production vs. research engines
-
-Production (`biofizic/state` -> VR) is the analytic path: artifact-corrected HRV,
-robust per-user log-space baseline, a Kalman smoother on the personal z, a
-signal-quality gate, and a CUSUM alert. No trained model artifact is required.
-
-Alongside it, **parallel research engines** can be enabled for the thesis
-demonstrations (negative results / comparisons). They publish only on
-`biofizic/legacy/*` and **never** feed the VR decision. Each is a build-time
-toggle in `biofizic/legacy/toggles.py` (flip + rebuild; default off keeps
-production free of scipy/scikit-learn):
-
-| Toggle | What it adds | Needs |
-|--------|--------------|-------|
-| `ENABLE_RAW_PPG` | parse raw PPG from the watch | `PUBLISH_RAW_PPG` on the watch |
-| `ENABLE_PPG_PEAKS` | band-pass + peak detection, PPA, IBI-from-PPG | scipy |
-| `ENABLE_WESAD` | WESAD RandomForest P(stress) in parallel | scikit-learn + `python train/models/train_wesad.py` |
-
-WESAD is a deliberate **domain-shift demonstration** (chest ECG / E4 wrist, not
-GW7) — see `docs/THESIS_LIMITATIONS.md`. The earlier WISDM HAR classifier was
-retired because its train/serve feature spaces did not match the watch's 1 Hz
-aggregated motion stats.
-
-## Development
-
-```bash
-python -m venv .venv && source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-pip install -r requirements.txt
-python services/compute_engine.py --broker localhost --port 1883
-```
-
-Human-readable decision logs when running compute-engine:
+## End-to-end data flow
 
 ```
-[PHYSIO] activation_level=6/10 (Moderat) | heart_rate=78bpm | rmssd=42ms ...
-[QUALITY] motion=still energy=0.02 | artifact_rate=0.01 | quality=0.95 | alert=no | reason=...
-[BASELINE] ready=yes | personal_stress_index=10.2 | z_score=+0.45 | labels_match=yes
+WATCH                                   SERVER (compute-engine)
+sensors ─▶ signal/ (clean beats)        ingestion/ (parse JSON → typed msgs)
+        ─▶ acquisition/ (atomic batch)         │
+        ─▶ MQTT acquisition/batch ───────────▶ dsp/ (clean IBI, peaks) ─▶ artifact_rate
+                                               │
+                                        compute_features/ (RMSSD, SI, mean_hr per 30/60/90s)
+                                               │
+                                        engine/ (quality → baseline z → fusion → Kalman → gate)
+                                               │
+                                        PhysiologyDecision ─▶ MQTT state/live/windows/live
+                                                                   │
+WATCH UI ◀── MQTT state/calibration ◀──────────────────────────────┘
+                                        mqtt-logger ─▶ InfluxDB ─▶ Grafana
 ```
 
-## Tests
+The chain is contractual: `ingestion.OUT = dsp.IN`, `dsp.OUT = compute_features.IN`,
+`compute_features.OUT = engine.IN`, `engine.OUT = services publish`.
 
-Unit tests cover IBI filtering (incl. timestamp-coherent RMSSD), HRV math,
-Kubios zone boundaries, the robust log-space baseline z-score, the
-signal-quality gate, the CUSUM alert detector, and the live-arousal hysteresis
-used to fix the watch UI flicker. Run them with:
+---
 
-```bash
-python -m pytest tests/ -v
+## MQTT topic map
+
+```
+WATCH → SERVER:
+  biofizic/acquisition/batch    (1 Hz) IBI + acc/gyro stats + temp + ts_anchor + sync diag
+  biofizic/cmd/calibrate        (re)calibration command + reported_arousal
+
+SERVER → WATCH / DASHBOARDS:
+  biofizic/state                (30s) epoch verdict (retained, QoS1)
+  biofizic/state/live           (1 Hz) live verdict
+  biofizic/state/windows        HRV over 30/60/90s
+  biofizic/live                 (1 Hz) ALIGNED stream, everything on ts_anchor
+  biofizic/calibration/status   calibration phase (collecting/done)
+  biofizic/legacy/{ppg,wesad,valence}  research engines
 ```
 
-The suite runs in under 2 seconds and has no external dependencies (no MQTT
-broker, no InfluxDB needed).
+---
 
-## Validation runbook
+## Folder index
 
-A four-layer validation workflow (math unit tests, atomic-sync unit tests,
-live diagnostic dashboard, offline replay reproducibility) is documented in
-[`docs/VALIDATION.md`](docs/VALIDATION.md). Use that for thesis defence.
+### Server (`C:\Users\doltu\Desktop\Licenta`)
+| Folder | Purpose | Doc |
+|---|---|---|
+| `biofizic/` (root) | Central config + log format + bootstrap | [biofizic/ARCHITECTURE.md](biofizic/ARCHITECTURE.md) |
+| `biofizic/ingestion/` | Raw MQTT JSON → typed message objects | [ingestion](biofizic/ingestion/ARCHITECTURE.md) |
+| `biofizic/dsp/` | Clean the IBI series + PPG peaks | [dsp](biofizic/dsp/ARCHITECTURE.md) |
+| `biofizic/compute_features/` | IBI → HRV metrics over 30/60/90s | [compute_features](biofizic/compute_features/ARCHITECTURE.md) |
+| `biofizic/engine/` | Features → the verdict (PhysiologyDecision) | [engine](biofizic/engine/ARCHITECTURE.md) |
+| `biofizic/legacy/` | Parallel research engines (not production) | [legacy](biofizic/legacy/ARCHITECTURE.md) |
+| `services/` | MQTT compute service + InfluxDB logger | [services](services/ARCHITECTURE.md) |
+| `scripts/` | Generate dashboards + WESAD comparison | [scripts](scripts/ARCHITECTURE.md) |
+| `train/` | Train the WESAD RandomForest model | [train](train/ARCHITECTURE.md) |
 
-Record and replay a session offline with:
+### Watch (`...\AndroidStudioProjects\biofizic\app\src\main\java\com\doltu\biofizic`)
+| Folder | Purpose | Doc |
+|---|---|---|
+| `signal/` | Validate/clean SDK beats into IBI window entries | `signal/ARCHITECTURE.md` |
+| `acquisition/` | Bundle the atomic 1 Hz acquisition batch | `acquisition/ARCHITECTURE.md` |
+| `presentation/` | Service lifecycle, MQTT, Compose UI | `presentation/ARCHITECTURE.md` |
 
-```bash
-python tools/record_session.py --output session.jsonl --duration 300
-python tools/replay_session.py session.jsonl --broker localhost
-```
+---
 
-## Grafana dashboards
+## Parameter provenance (glossary)
 
-| UID | Purpose |
-|-----|---------|
-| `biofizic-live-overview` | Arousal + Kubios label from `biofizic_state_live` (1 Hz) |
-| `biofizic-hrv-analysis` | Multi-window RMSSD / stress index (30/60/90 s) |
-| `biofizic-baseline-compare` | Kubios vs personal baseline |
-| `biofizic-signal-quality` | Motion state, signal quality (Q), IBI artifact rate, cardiac-band motion energy |
-| `biofizic-stream-sync` | Atomic-sync diagnostics: anchor delay, IBI count per batch, seq increment |
-| `biofizic-window-comparison` | w30/w60/w90 HRV side by side (validation only) |
-| `biofizic-session-overview` | Full session timeline |
-| `biofizic-all-data-live` | Raw PPG wave + detected peaks + IBI (SDK vs reconstructed) — needs raw-PPG toggles |
-| `biofizic-determinist-vs-wesad` | Personal filtered z / arousal vs WESAD P(stress) |
-| `biofizic-ppg-failure` | Pulse amplitude collapse under motion (valence-exclusion evidence) |
-| `biofizic-valence-demo` | Ad-hoc valence heuristic — documented negative result |
+Three origins, referenced as ① ② ③ throughout the per-folder docs:
 
-Queries use **`biofizic_state_live`** for live arousal (1 Hz) and **`biofizic_state`** for full 30s epoch decisions.
+- **① Watch raw (sensors):** `hr`/`hr_sdk`, `ppg_green`/`ppg_ir`, `ibi_ms`, `skin_temp`.
+- **② Watch computed:** `acc_rms/p90/std`, `gyro_*`, `acc_band_cardiac`, `ts_anchor`, `seq`, `anchor_delay_ms`.
+- **③ Server computed:** `rmssd`, `sdnn`, `stress_index`, `mean_hr` (=60000/mean_IBI),
+  `z_si`, `z_hr`, `z_si_filtered`, `arousal_10`, `emotion`, `emotion_baseline`,
+  `motion_state`, `signal_quality`, `artifact_rate`, `confidence`, `dominant_channel`,
+  `kalman_gain`, `labels_agree`.
+- **③b Server legacy/ML:** `p_stress` (WESAD), `valence`, `ppa`, `n_peaks`, `ibi_recon_mean`.
 
-## License / thesis context
-
-Bachelor thesis project for physiological monitoring in VR/wellness research.
-Arousal is derived from the personal stress-index z-score via the normal CDF
-(arousal = Φ(z)), with the Kubios stress index (Baevsky 1984; Kubios HRV User
-Guide) as the population reference and pre-baseline fallback. HRV reliability is
-gated by a signal-quality model — IBI artifact rate (Task Force ESC/NASPE 1996)
-and cardiac-band wrist-motion energy — rather than an activity classifier.
-Sustained stress is confirmed by a CUSUM change detector (Page 1954). Valence is
-**not** estimated. Wrist PPG cannot reliably measure emotional valence.
+`hr_sdk` (①, raw on watch) vs `mean_hr` (③, derived from beats on server) — comparing
+them validates beat integrity.

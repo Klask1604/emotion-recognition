@@ -169,7 +169,15 @@ class ComputeEngineService:
         self._last_context: dict | None = None
         # Brings the valence verdict to parity with arousal: confidence gate +
         # median smoothing + verdict hysteresis (see ValenceVerdictStabilizer).
+        # One stabiliser PER model so each emotion verdict (WESAD/EEVR/CASE) is
+        # smoothed independently and the dashboard reads a ready quadrant instead
+        # of recomputing the logic in SQL (single source of truth in Python).
         self._valence_stabilizer = ValenceVerdictStabilizer()
+        self._emotion_stabilizers = {
+            "wesad": ValenceVerdictStabilizer(),
+            "eevr": ValenceVerdictStabilizer(),
+            "case": ValenceVerdictStabilizer(),
+        }
         # Rolling ECG calibration buffer (raw 500 Hz samples + timestamps + lead).
         # Filled by the biofizic/ecg/calibrate handler during a finger-hold,
         # cleared on every cmd/calibrate so each calibration starts clean.
@@ -530,12 +538,18 @@ class ComputeEngineService:
             })
         client.publish("biofizic/live", json.dumps(payload), qos=0)
 
-    def _enrich_valence(self, out_dict, vbase, vsmoother, result) -> float | None:
+    def _enrich_valence(self, out_dict, vbase, vsmoother, result,
+                        model_key=None) -> float | None:
         """Recenter one valence model's raw valence_z on the subject's personal
         resting baseline and add the calibrated fields to its published dict, the
         same way WESAD does. Used for WESAD, EEVR and CASE so all three show
         subject-relative emotion (neutral measured, not assumed 0). Returns the
-        60 s-smoothed personal valence (or None if no valence_z this epoch)."""
+        60 s-smoothed personal valence (or None if no valence_z this epoch).
+
+        When model_key is given, also folds this epoch into that model's own
+        verdict stabiliser (confidence gate + median + hysteresis) and attaches
+        the READY quadrant (emotion / emotion_code) to the dict — so the
+        dashboard reads a stable verdict instead of recomputing it in SQL."""
         vz = out_dict.get("valence_z")
         if vz is None:
             return None
@@ -556,7 +570,30 @@ class ComputeEngineService:
         out_dict["valence_deadband"] = round(deadband, 4)
         out_dict["neutral_valence_z"] = round(vbase.neutral_valence_z or 0.0, 4)
         out_dict["valence_baseline_ready"] = vbase.is_ready
+
+        # Stabilised 2D Russell quadrant for THIS model — the single source of
+        # truth the dashboard displays (no CASE WHEN in SQL). Always emitted, not
+        # gated on VR: valence here is the model's own personal-calibrated pulse
+        # valence; arousal is the validated z. Honest at low confidence because
+        # the stabiliser's gate pulls uncertain epochs to Neutru.
+        stab = self._emotion_stabilizers.get(model_key) if model_key else None
+        if stab is not None:
+            arousal_z = self._current_arousal_z(result)
+            conf = float(out_dict.get("confidence") or 0.0)
+            label, code = stab.update(
+                arousal_z, smoothed, conf, deadband, vbase.is_ready,
+            )
+            out_dict["emotion"] = label
+            out_dict["emotion_code"] = code
         return smoothed
+
+    @staticmethod
+    def _current_arousal_z(result) -> float:
+        """Personal arousal z for this epoch (>=0 = at/above resting baseline)."""
+        if result is not None and getattr(result, "decision", None) is not None:
+            return float(getattr(result.decision,
+                                 "stress_index_z_filtered", 0.0) or 0.0)
+        return 0.0
 
     def _publish_legacy(self, client, batch, result) -> None:
         """Publish the parallel research engines on biofizic/legacy/* (never VR)."""
@@ -577,7 +614,8 @@ class ComputeEngineService:
             # on this subject (neutral measured on resting epochs, not assumed 0).
             vbase = self.pipeline.valence_baseline
             smoothed = self._enrich_valence(
-                out.valence_wesad, vbase, self.pipeline.valence_smoother, result)
+                out.valence_wesad, vbase, self.pipeline.valence_smoother, result,
+                model_key="wesad")
             if smoothed is not None:
                 # WESAD is the channel that drives the watch verdict, so it also
                 # caches for the decision payload and advances the stabiliser.
@@ -619,11 +657,13 @@ class ComputeEngineService:
         # watch verdict (no stabiliser / decision cache).
         if out.valence_eevr is not None:
             self._enrich_valence(out.valence_eevr, self.pipeline.valence_baseline_eevr,
-                                 self.pipeline.valence_smoother_eevr, result)
+                                 self.pipeline.valence_smoother_eevr, result,
+                                 model_key="eevr")
             client.publish("biofizic/legacy/valence_eevr", json.dumps({"ts": ts, **out.valence_eevr}), qos=0)
         if out.valence_case is not None:
             self._enrich_valence(out.valence_case, self.pipeline.valence_baseline_case,
-                                 self.pipeline.valence_smoother_case, result)
+                                 self.pipeline.valence_smoother_case, result,
+                                 model_key="case")
             client.publish("biofizic/legacy/valence_case", json.dumps({"ts": ts, **out.valence_case}), qos=0)
         # Polarity (negative / neutral / positive). The 3-class model has its own
         # neutral class, but at low arousal it can still mistake a resting subject

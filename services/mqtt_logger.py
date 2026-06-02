@@ -81,6 +81,11 @@ TAG_FIELDS: dict[str, list[str]] = {
     "biofizic/state/windows": [
         "motion_state", "w30_quality", "w60_quality", "w90_quality",
     ],
+    # Each valence model's stabilised quadrant LABEL (Neutru/Calm/Trist/...),
+    # alongside its numeric emotion_code, for the per-model comparison panels.
+    "biofizic/legacy/valence_wesad": ["emotion"],
+    "biofizic/legacy/valence_eevr": ["emotion"],
+    "biofizic/legacy/valence_case": ["emotion"],
 }
 
 # Boolean fields written as 0/1 floats so Grafana can plot them on axes.
@@ -136,20 +141,24 @@ FLOAT_FIELDS.update({
         # own resting neutral. valence_baseline_ready: has calibration locked.
         "valence_personal", "valence_personal_60s", "valence_deadband",
         "neutral_valence_z", "valence_baseline_ready",
+        # Stabilised 2D Russell quadrant computed in Python (single source of
+        # truth): 0 Neutru 1 Calm 2 Trist 3 Bucuros 4 Stresat. The dashboard
+        # reads this directly instead of recomputing the verdict in SQL.
+        "emotion_code",
     ],
     # EEVR / CASE valence models (observed-only comparison). Each is personally
     # recentered on its own baseline (like WESAD), so the dashboard shows
     # calibrated emotion for all three. valence_z raw in [-1,1]; valence_personal*
-    # subject-relative.
+    # subject-relative. emotion_code = each model's own stabilised quadrant.
     "biofizic/legacy/valence_eevr": [
         "p_positive", "valence_z", "confidence", "src_hz",
         "valence_personal", "valence_personal_60s", "valence_deadband",
-        "neutral_valence_z", "valence_baseline_ready",
+        "neutral_valence_z", "valence_baseline_ready", "emotion_code",
     ],
     "biofizic/legacy/valence_case": [
         "p_positive", "valence_z", "confidence", "src_hz",
         "valence_personal", "valence_personal_60s", "valence_deadband",
-        "neutral_valence_z", "valence_baseline_ready",
+        "neutral_valence_z", "valence_baseline_ready", "emotion_code",
     ],
     # Polarity (negative / neutral / positive) - the product-facing 3-class model.
     # p_* are class probabilities; polarity_z in [-1,1] (>0 positive); label_code

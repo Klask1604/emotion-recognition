@@ -189,7 +189,7 @@
           "format": "time_series",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT l.time, CASE WHEN v.valence_baseline_ready < 0.5 THEN 0 WHEN abs(v.valence_personal_60s) < v.valence_deadband THEN 0 WHEN l.z_filtered >= 0 AND v.valence_personal_60s >= 0 THEN 3 WHEN l.z_filtered >= 0 THEN 4 WHEN v.valence_personal_60s >= 0 THEN 1 ELSE 2 END AS emotion FROM biofizic_live l JOIN biofizic_legacy_valence_wesad v ON l.time = v.time WHERE l.z_filtered IS NOT NULL AND v.valence_personal_60s IS NOT NULL AND $__timeFilter(l.time) ORDER BY l.time"
+          "rawSql": "SELECT time, emotion_code AS emotion FROM biofizic_legacy_valence_wesad WHERE emotion_code IS NOT NULL AND $__timeFilter(time) ORDER BY time"
         }
       ],
       "fieldConfig": {
@@ -496,7 +496,7 @@
           "format": "time_series",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT l.time, CASE WHEN v.valence_baseline_ready < 0.5 THEN 0 WHEN abs(v.valence_personal_60s) < v.valence_deadband THEN 0 WHEN l.z_filtered >= 0 AND v.valence_personal_60s >= 0 THEN 3 WHEN l.z_filtered >= 0 THEN 4 WHEN v.valence_personal_60s >= 0 THEN 1 ELSE 2 END AS emotion FROM biofizic_live l JOIN biofizic_legacy_valence_eevr v ON l.time = v.time WHERE l.z_filtered IS NOT NULL AND v.valence_personal_60s IS NOT NULL AND $__timeFilter(l.time) ORDER BY l.time"
+          "rawSql": "SELECT time, emotion_code AS emotion FROM biofizic_legacy_valence_eevr WHERE emotion_code IS NOT NULL AND $__timeFilter(time) ORDER BY time"
         }
       ],
       "fieldConfig": {
@@ -803,7 +803,7 @@
           "format": "time_series",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT l.time, CASE WHEN v.valence_baseline_ready < 0.5 THEN 0 WHEN abs(v.valence_personal_60s) < v.valence_deadband THEN 0 WHEN l.z_filtered >= 0 AND v.valence_personal_60s >= 0 THEN 3 WHEN l.z_filtered >= 0 THEN 4 WHEN v.valence_personal_60s >= 0 THEN 1 ELSE 2 END AS emotion FROM biofizic_live l JOIN biofizic_legacy_valence_case v ON l.time = v.time WHERE l.z_filtered IS NOT NULL AND v.valence_personal_60s IS NOT NULL AND $__timeFilter(l.time) ORDER BY l.time"
+          "rawSql": "SELECT time, emotion_code AS emotion FROM biofizic_legacy_valence_case WHERE emotion_code IS NOT NULL AND $__timeFilter(time) ORDER BY time"
         }
       ],
       "fieldConfig": {
