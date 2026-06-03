@@ -50,20 +50,20 @@ warnings.filterwarnings("ignore")
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from affectus.legacy.valence_ppg_fd import extract_valence_fd_features  # noqa: E402
-from affectus.legacy.valence_ppg_morph import (  # noqa: E402
+from affectus.research.valence.ppg_fd import extract_valence_fd_features  # noqa: E402
+from affectus.research.valence.ppg_morph import (  # noqa: E402
     MORPH_FEATURE_NAMES,
     extract_morph_features,
 )
-from affectus.legacy.ppg_hrv_features import (  # noqa: E402
+from affectus.research.valence.ppg_hrv_features import (  # noqa: E402
     HRV_FEATURE_NAMES,
     extract_hrv_features,
 )
-from affectus.legacy.ppg_vascular_features import (  # noqa: E402
+from affectus.research.valence.ppg_vascular_features import (  # noqa: E402
     VASC_FEATURE_NAMES,
     extract_vascular_features,
 )
-from affectus.legacy.valence_features import (  # noqa: E402
+from affectus.research.valence.features import (  # noqa: E402
     VALENCE_FEATURE_NAMES,
     extract_valence_feature_vector,
 )

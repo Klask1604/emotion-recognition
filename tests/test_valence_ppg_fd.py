@@ -13,7 +13,7 @@ import math
 import numpy as np
 
 from affectus.config import VALENCE_FD_MIN_SAMPLES
-from affectus.legacy.valence_ppg_fd import extract_valence_fd_features
+from affectus.research.valence.ppg_fd import extract_valence_fd_features
 
 
 def _synth_ppg(hr_bpm: float, fs: float, seconds: float,

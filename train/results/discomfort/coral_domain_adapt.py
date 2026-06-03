@@ -36,7 +36,7 @@ warnings.filterwarnings("ignore")
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from affectus.legacy.valence_features import extract_valence_feature_vector  # noqa: E402
+from affectus.research.valence.features import extract_valence_feature_vector  # noqa: E402
 
 FS = 100
 WIN_S = 20

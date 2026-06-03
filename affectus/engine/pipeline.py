@@ -6,31 +6,31 @@ import logging
 import time
 from dataclasses import dataclass
 
-from affectus.shared.baseline import RestBaselineStore
-from affectus.shared.valence_baseline import ValenceBaselineStore, ValenceSmoother
-from affectus.shared.reactivity import ReactivityProfile
-from affectus.devices.wrist.modules.temperature import SkinTemperatureChannelState
+from affectus.dsp.baseline import RestBaselineStore
+from affectus.dsp.reactivity import ReactivityProfile
+from affectus.dsp.temperature import SkinTemperatureChannelState
 from affectus.engine.decision import DecisionState, decide
-from affectus.shared.signal_quality import SignalQualityState, update_and_score
+from affectus.dsp.signal_quality import SignalQualityState, update_and_score
 from affectus.logging import format_decision_block
-from affectus.shared.hrv.results import (
+from affectus.dsp.hrv.results import (
     HrvMetrics,
     MultiWindowHrvResult,
     MultiWindowResult,
     PhysiologyDecision,
     WindowResult,
 )
-from affectus.ingestion.messages import (
+from affectus.io.messages import (
     AcquisitionBatchMessage,
     IbiBatchMessage,
-    SensorBatchMessage,
+    InterbeatIntervalEntry,
 )
+from affectus.dsp.hrv.metrics import compute_hrv_from_entries
 from affectus.config import (
     HRV_LOOKBACK_MS,
     MIN_BEATS_FOR_ANY_HRV,
     PRIMARY_DECISION_WINDOW_SECONDS,
 )
-from affectus.shared.hrv.windows import MultiWindowProcessor, RollingIbiBuffer, RollingSensorBuffer
+from affectus.dsp.hrv.windows import MultiWindowProcessor, RollingIbiBuffer, RollingSensorBuffer
 
 log = logging.getLogger("physiology_pipeline")
 
@@ -39,7 +39,7 @@ log = logging.getLogger("physiology_pipeline")
 class PipelineState:
     """Mutable pipeline runtime state."""
 
-    last_sensor: SensorBatchMessage | None = None
+    last_sensor: AcquisitionBatchMessage | None = None
     epoch_count: int = 0
     last_decision_at: float = 0.0
 
@@ -65,25 +65,12 @@ class PhysiologyPipeline:
         # never touches rest_baseline.json. Resting samples feed it on the same
         # quality gate as the HRV baseline.
         self.temperature = SkinTemperatureChannelState(persist=True)
-        # Personal valence baseline: recenters the cross-device WESAD model on
-        # this subject (neutral = measured resting median, not assumed 0). Fed by
-        # the compute service on the same resting gate as the HRV baseline.
-        self.valence_baseline = ValenceBaselineStore(persist=True)
-        # 60 s rolling mean of personal valence: reports the background emotional
-        # state (mood) rather than each noisy 1 s epoch. Matched to the arousal
-        # decision window (w60) so the circumplex has uniform inertia on both axes.
-        self.valence_smoother = ValenceSmoother(window_s=60.0)
-        # EEVR- and CASE-trained valence models get their OWN personal baseline +
-        # smoother (own file, own neutral), so each is re-centered on the subject
-        # exactly like WESAD and the comparison dashboard shows calibrated emotion
-        # for all three, not raw valence. Same resting gate feeds all three.
-        from affectus.config import data_dir
-        self.valence_baseline_eevr = ValenceBaselineStore(
-            path=data_dir() / "valence_baseline_eevr.json")
-        self.valence_smoother_eevr = ValenceSmoother(window_s=60.0)
-        self.valence_baseline_case = ValenceBaselineStore(
-            path=data_dir() / "valence_baseline_case.json")
-        self.valence_smoother_case = ValenceSmoother(window_s=60.0)
+        # Personal valence calibration (WESAD/EEVR/CASE baselines + smoothers) used
+        # to be held here. It is research state — valence is observed-only, on trial
+        # before it is trusted in the verdict — so it now lives in ResearchEngines
+        # (affectus/research/), keeping this production engine free of research
+        # imports and holding only the arousal + temperature state it actually
+        # decides on. The compute service feeds and resets those tracks separately.
         # One-time subject reactivity profile: scales the valence dead-band.
         self.reactivity = ReactivityProfile(persist=True)
         # While an ECG calibration is in progress, PPG must NOT lock the baseline
@@ -98,6 +85,16 @@ class PhysiologyPipeline:
         self.quality_state = SignalQualityState()
         self.decision_state = DecisionState()
         self.state = PipelineState()
+        # The sensors the device DECLARED at the handshake — the single source of
+        # truth for which fusion channels run. Set by the compute service from the
+        # biofizic/hello announcement. None until a handshake arrives: a watch that
+        # streams before announcing still gets a verdict via the decide() fallback.
+        self.declared_capabilities: "frozenset | None" = None
+
+    def set_declared_capabilities(self, caps: "frozenset | None") -> None:
+        """Record the sensors the device announced. These — not what each payload
+        happens to carry — decide which channels the fusion runs."""
+        self.declared_capabilities = caps
 
     def ingest_ibi_batch(self, batch: IbiBatchMessage) -> None:
         self.ibi_buffer.ingest_batch(batch)
@@ -117,9 +114,6 @@ class PhysiologyPipeline:
         observe_resting is kept (pass `now`) so the locked baseline's MAD stays
         meaningful: a sample is accepted ~once per real second of contact, 8 of
         them lock it in ~8 s. Returns whether the baseline has locked."""
-        from affectus.shared.hrv.metrics import compute_hrv_from_entries
-        from affectus.ingestion.messages import InterbeatIntervalEntry
-
         for ms, ts in zip(batch.intervals_ms, batch.timestamps_ms):
             self._ecg_cal_beats.append(InterbeatIntervalEntry(interval_ms=ms, timestamp_ms=ts))
         # Keep a bounded recent window of beats so the HRV stats reflect the hold,
@@ -141,29 +135,15 @@ class PhysiologyPipeline:
         return self.baseline.is_ready
 
     def ingest_acquisition(self, batch: AcquisitionBatchMessage) -> None:
-        """Atomic ingest of a v2 watch batch. Wraps it into a device-agnostic
-        SensorFrame and delegates, so every wearable enters through one path."""
-        from affectus.devices.wrist.adapter import frame_from_acquisition_v2
-
-        self.ingest_frame(frame_from_acquisition_v2(batch))
-
-    def ingest_frame(self, frame: "SensorFrame") -> None:
-        """Capability-agnostic ingest: route the canonical slots of any frame
-        into the rolling buffers. Only signals the frame actually carries are
-        ingested (e.g. no MOTION capability -> motion buffer untouched)."""
-        from affectus.contract.capabilities import Capability
-
-        if frame.has(Capability.IBI) and frame.ibi is not None:
-            self.ingest_ibi_batch(frame.ibi)
-        # The legacy decision path still reads SensorBatchMessage; keep it fed
-        # from the frame's raw message when present (wrist v2), else synthesise.
-        if frame.raw is not None:
-            self.ingest_sensor_batch(frame.raw.to_sensor_batch())
-        if frame.has(Capability.MOTION) and frame.motion_energy is not None:
-            self.motion_buffer.ingest(frame.timestamp_ms, frame.motion_energy)
-
-    def ingest_sensor_batch(self, batch: SensorBatchMessage) -> None:
+        """Atomic ingest of a watch batch: route its signals into the rolling
+        buffers. The batch IS the in-process sensor record — no intermediate frame.
+        Empty signals are no-ops (no IBI -> nothing buffered; no motion -> energy 0),
+        so the routing needs no capability gate. Which CHANNELS run is decided later,
+        from the handshake-declared capabilities, not from what one batch carries."""
+        if batch.ibi_intervals_ms:
+            self.ingest_ibi_batch(batch.to_ibi_batch())
         self.state.last_sensor = batch
+        self.motion_buffer.ingest(batch.timestamp_anchor_ms, batch.motion_energy())
 
     @staticmethod
     def _window_result_from_metrics(metrics: HrvMetrics | None) -> WindowResult:
@@ -269,10 +249,15 @@ class PhysiologyPipeline:
                 )
 
         decision = None
-        # Gate on the primary window (w60 when available, w30 fallback).
+        # Gate on the primary window (w60 when available, w30 fallback) AND on a
+        # handshake having declared the device's sensors. No declaration -> no
+        # verdict: the device must announce what it carries (biofizic/hello) before
+        # we run any channel. This keeps the declared capability set the single
+        # source of truth, with no hidden default deciding the fusion.
         primary_window_result = w60 if primary is multi.window_60_seconds else w30
         if (
-            primary_window_result.quality != "unavailable"
+            self.declared_capabilities is not None
+            and primary_window_result.quality != "unavailable"
             and primary is not None
             and primary.beat_count >= MIN_BEATS_FOR_ANY_HRV
         ):
@@ -285,6 +270,7 @@ class PhysiologyPipeline:
                 temperature=self.temperature,
                 state=self.decision_state,
                 publish_epoch=publish_epoch,
+                present=self.declared_capabilities,
             )
             if publish_epoch:
                 self.state.epoch_count += 1
@@ -321,17 +307,13 @@ class PhysiologyPipeline:
         self.baseline.reset_for_recalibration(reported_arousal)
         self.temperature.reset()
         self.decision_state.reset()
-        # Recalibration must also re-anchor valence: the personal neutral and the
-        # smoother are subject/session-specific, so a recalibrate re-measures them
-        # from the new resting epochs (otherwise valence stays on the old neutral).
-        # reported_valence feeds the polarity sign-guard (does not move neutral).
-        self.valence_baseline.reset_for_recalibration(reported_valence)
-        self.valence_smoother.reset()
-        # The EEVR/CASE comparison baselines re-anchor on the same recalibration.
-        self.valence_baseline_eevr.reset_for_recalibration(reported_valence)
-        self.valence_smoother_eevr.reset()
-        self.valence_baseline_case.reset_for_recalibration(reported_valence)
-        self.valence_smoother_case.reset()
+        # Valence re-anchoring (WESAD/EEVR/CASE personal neutrals + smoothers) is no
+        # longer done here — that state lives in ResearchEngines. The compute service
+        # calls research.reset_valence_tracks(reported_valence) right after this, so a
+        # recalibration still re-measures every model's neutral from the new resting
+        # epochs. reported_valence is accepted (and ignored here) so the call site
+        # stays symmetric with the arousal reset.
+        _ = reported_valence
         # Reactivity is a one-time subject profile; set only when the watch sends it.
         if reactivity is not None:
             self.reactivity.set(reactivity)

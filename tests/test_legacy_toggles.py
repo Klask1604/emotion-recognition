@@ -7,15 +7,15 @@ compute."""
 
 from __future__ import annotations
 
-from affectus.legacy import LegacyEngines, toggles
+from affectus.research import ResearchEngines, toggles
 
 
 def test_legacy_output_never_enters_production_decision():
     # Whatever the toggles, legacy/research output is surfaced only on
-    # biofizic/legacy/* via LegacyOutputs — it must never appear as a field on
+    # biofizic/legacy/* via ResearchOutputs — it must never appear as a field on
     # the production PhysiologyDecision that drives VR.
     from dataclasses import fields
-    from affectus.shared.hrv.results import PhysiologyDecision
+    from affectus.dsp.hrv.results import PhysiologyDecision
 
     decision_fields = {f.name for f in fields(PhysiologyDecision)}
     for leaked in ("p_stress", "valence", "respiration", "rsa_bpm", "ppg_bpm"):
@@ -32,7 +32,7 @@ def test_legacy_engines_inactive_when_all_toggles_off(monkeypatch):
         "ENABLE_POLARITY",
     ):
         monkeypatch.setattr(toggles, flag, False)
-    eng = LegacyEngines()
+    eng = ResearchEngines()
     assert not eng.active
 
 
@@ -40,5 +40,5 @@ def test_legacy_engines_become_active_when_toggle_flipped(monkeypatch):
     # Flipping any toggle on must activate the engine surface so a research
     # session can be opted in without code changes elsewhere.
     monkeypatch.setattr(toggles, "ENABLE_RAW_PPG", True)
-    eng = LegacyEngines()
+    eng = ResearchEngines()
     assert eng.active

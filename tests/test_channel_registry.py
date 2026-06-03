@@ -3,13 +3,13 @@ capabilities are present, and the wrist set reproduces the prior [hrv,hr,temp]."
 
 from __future__ import annotations
 
-from affectus.devices.registry import ChannelContext, build_channels
+from affectus.engine.channels import ChannelContext, build_channels
 from affectus.contract.capabilities import Capability
-from affectus.shared.signal_quality import SignalQuality
-from affectus.devices.wrist.modules.temperature import SkinTemperatureChannelState
-from affectus.shared.baseline import RestBaselineStore
-from affectus.shared.hrv.results import HrvMetrics
-from affectus.ingestion.messages import SensorBatchMessage
+from affectus.dsp.signal_quality import SignalQuality
+from affectus.dsp.temperature import SkinTemperatureChannelState
+from affectus.dsp.baseline import RestBaselineStore
+from affectus.dsp.hrv.results import HrvMetrics
+from affectus.io.messages import AcquisitionBatchMessage
 
 
 def _quality(q=0.9):
@@ -26,7 +26,7 @@ def _metrics():
 def _ctx(present, temperature=None, tmp_path=None):
     return ChannelContext(
         primary=_metrics(),
-        sensor=SensorBatchMessage(timestamp_ms=0, heart_rate_bpm=70.0,
+        sensor=AcquisitionBatchMessage(timestamp_publish_ms=0, timestamp_anchor_ms=0, sequence=0, heart_rate_bpm=70.0,
                                   skin_temperature_c=33.0, ambient_temperature_c=24.0),
         quality=_quality(),
         baseline=RestBaselineStore(path=(tmp_path / "b.json") if tmp_path else None),

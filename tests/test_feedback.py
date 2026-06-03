@@ -10,8 +10,8 @@ import tempfile
 import time
 from pathlib import Path
 
-import affectus.shared.feedback_store as fs
-from affectus.shared.feedback_store import append_feedback, load_feedback
+import affectus.dsp.feedback_store as fs
+from affectus.dsp.feedback_store import append_feedback, load_feedback
 from services.compute_engine import ComputeEngineService
 
 
@@ -62,7 +62,7 @@ def test_handle_feedback_pairs_label_with_features(monkeypatch):
         _valence_wesad = FakeEng()
 
     svc = ComputeEngineService.__new__(ComputeEngineService)
-    svc.legacy = FakeLegacy()
+    svc.research = FakeLegacy()
     svc._last_pred = {"wesad": 0.2, "eevr": 0.7, "case": 0.66, "arousal_z": 0.9, "ts": 1}
     client = _FakeClient()
 
@@ -82,7 +82,7 @@ def test_handle_feedback_ignores_bad_quadrant(monkeypatch):
     p = _tmp()
     monkeypatch.setattr(fs, "default_path", lambda: p)
     svc = ComputeEngineService.__new__(ComputeEngineService)
-    svc.legacy = type("L", (), {"_valence_wesad": None})()
+    svc.research = type("L", (), {"_valence_wesad": None})()
     svc._last_pred = {}
     svc._handle_feedback(_FakeClient(), {"quadrant": "nonsense"}, time.time())
     assert load_feedback(p) == []

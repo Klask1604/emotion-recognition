@@ -28,7 +28,7 @@ warnings.filterwarnings("ignore")
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from affectus.legacy.valence_features import VALENCE_FEATURE_NAMES  # noqa: E402
+from affectus.research.valence.features import VALENCE_FEATURE_NAMES  # noqa: E402
 
 # Features that transfer to the watch at 100 Hz (|d|<0.5 vs WESAD, measured on the
 # user's own live PPG in my_domain_shift.py). The discomfort detector may use ONLY

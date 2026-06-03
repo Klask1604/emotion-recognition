@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from affectus.ingestion.messages import IbiBatchMessage
-from affectus.shared.hrv.windows import RollingIbiBuffer, RollingSensorBuffer
+from affectus.io.messages import IbiBatchMessage
+from affectus.dsp.hrv.windows import RollingIbiBuffer, RollingSensorBuffer
 
 
 def test_ingest_keeps_all_beats_when_timestamps_partial():

@@ -3,7 +3,7 @@ ignores malformed input."""
 
 from __future__ import annotations
 
-from affectus.shared.reactivity import ReactivityProfile
+from affectus.dsp.reactivity import ReactivityProfile
 
 
 def test_default_is_normal():

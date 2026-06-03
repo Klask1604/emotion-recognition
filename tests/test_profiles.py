@@ -3,8 +3,8 @@ different profile changes the quality scoring (proving thresholds are honoured).
 
 from __future__ import annotations
 
-from affectus.shared.signal_quality import SignalQualityState, update_and_score
-from affectus.shared.profiles import SensorProfile, profile_for
+from affectus.dsp.signal_quality import SignalQualityState, update_and_score
+from affectus.dsp.profiles import SensorProfile, profile_for
 
 
 def test_default_profile_is_wrist():

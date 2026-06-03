@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from affectus.shared.dsp.artifact_correction import correct_ibi_series
-from affectus.ingestion.messages import InterbeatIntervalEntry
+from affectus.dsp.filters.artifact_correction import correct_ibi_series
+from affectus.io.messages import InterbeatIntervalEntry
 
 
 def _series(values: list[int]) -> list[InterbeatIntervalEntry]:

@@ -12,8 +12,10 @@ Ceas (wrist) --WiFi--> MQTT --> Engine Python (Docker) --> InfluxDB --> Grafana
                                        +<--> Unity / VR (context + verdict) 
 ```
 
-Chest si Headset: structura pregatita in cod (DDD), DAR NEIMPLEMENTATE
-(folderele de module sunt goale). In diagrame = linie punctata, via BLE -> telefon.
+Chest si Headset: contractul de capabilities e pregatit (`affectus/contract/`, DDD),
+DAR DEVICE-URILE SUNT NEIMPLEMENTATE. Cand se adauga, declara ce semnale poarta prin
+handshake (`biofizic/hello`) si se adauga un canal in `engine/channels.py`. In diagrame
+= linie punctata, via BLE -> telefon.
 
 ## 2. Ce trimite ceasul (batch, ~1 mesaj/secunda)
 
@@ -81,7 +83,7 @@ deadband. Polaritatea are clasa neutral proprie (baseline+meditatie).
 
 ## 6. VERDICTUL 2D (cadran Russell)
 
-In `affectus/shared/emotion.py`. Combina arousal x valenta:
+In `affectus/dsp/emotion.py`. Combina arousal x valenta:
 - coduri: 0 Neutru, 1 Calm, 2 Trist, 3 Bucuros, 4 Stresat
 - arousal sus + valenta + -> Bucuros; arousal sus + valenta - -> Stresat
 - arousal jos + valenta + -> Calm; arousal jos + valenta - -> Trist
@@ -149,5 +151,6 @@ Binar negativ vs pozitiv, balanced accuracy:
 ## 11. Stare implementare
 
 - **wrist:** IMPLEMENTAT si testat (singura parte testata pe subiect real).
-- **chest, headset:** structura DDD pregatita, module GOALE, NEIMPLEMENTATE.
+- **chest, headset:** contractul de capabilities pregatit (`contract/`), device-urile
+  NEIMPLEMENTATE. Se adauga prin handshake + un canal nou in `engine/channels.py`.
 - **Unity/VR:** plan context->valenta, partial; bucla feedback nu e gata live.

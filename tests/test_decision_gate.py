@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from affectus.shared.hrv.results import HrvMetrics, MultiWindowHrvResult
+from affectus.dsp.hrv.results import HrvMetrics, MultiWindowHrvResult
 from affectus.config import CUSUM_THRESHOLD_H
-from affectus.shared.baseline import RestBaselineStore
+from affectus.dsp.baseline import RestBaselineStore
 from affectus.engine.decision import DecisionState, _cusum_update, decide
-from affectus.shared.signal_quality import SignalQuality
-from affectus.ingestion.messages import SensorBatchMessage
+from affectus.dsp.signal_quality import SignalQuality
+from affectus.io.messages import AcquisitionBatchMessage
 
 
 def _quality(*, q: float = 0.9, motion: str = "still", artifact: float = 0.0) -> SignalQuality:
@@ -68,7 +68,7 @@ def _decide_with(
         s.estimator_x = z_filtered_seed
     primary = _metrics(si=si)
     multi = MultiWindowHrvResult(None, primary, None, None)
-    sensor = SensorBatchMessage(timestamp_ms=0, heart_rate_bpm=70.0)
+    sensor = AcquisitionBatchMessage(timestamp_publish_ms=0, timestamp_anchor_ms=0, sequence=0, heart_rate_bpm=70.0)
     return decide(
         primary=primary,
         multi=multi,
@@ -96,7 +96,7 @@ def test_post_baseline_uses_filtered_z(tmp_path: Path):
     baseline = _ready_baseline(tmp_path)
     primary = _metrics(si=10.0)
     multi = MultiWindowHrvResult(None, primary, None, None)
-    sensor = SensorBatchMessage(timestamp_ms=0, heart_rate_bpm=70.0)
+    sensor = AcquisitionBatchMessage(timestamp_publish_ms=0, timestamp_anchor_ms=0, sequence=0, heart_rate_bpm=70.0)
     d = decide(
         primary=primary,
         multi=multi,

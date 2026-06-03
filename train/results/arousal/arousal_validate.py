@@ -36,7 +36,7 @@ warnings.filterwarnings("ignore")
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from affectus.shared.hrv.metrics import compute_baevsky_indices  # noqa: E402
+from affectus.dsp.hrv.metrics import compute_baevsky_indices  # noqa: E402
 
 WIN_S, STEP_S = 30, 15   # arousal uses a longer HRV window than valence
 

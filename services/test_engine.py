@@ -41,11 +41,11 @@ import affectus._bootstrap  # noqa: F401
 
 import paho.mqtt.client as mqtt
 
-from affectus.shared.dsp.ppg_peaks import detect_ppg_peaks
-from affectus.shared.hrv.metrics import compute_hrv_from_entries
-from affectus.shared.baseline import RestBaselineStore
+from affectus.dsp.filters.ppg_peaks import detect_ppg_peaks
+from affectus.dsp.hrv.metrics import compute_hrv_from_entries
+from affectus.dsp.baseline import RestBaselineStore
 from affectus.engine.pipeline import PhysiologyPipeline
-from affectus.ingestion.messages import (
+from affectus.io.messages import (
     AcquisitionBatchMessage,
     InterbeatIntervalEntry,
 )

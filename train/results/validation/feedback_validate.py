@@ -29,7 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from affectus.shared.feedback_store import load_feedback  # noqa: E402
+from affectus.dsp.feedback_store import load_feedback  # noqa: E402
 
 POSITIVE_VALENCE = {"Bucuros", "Calm"}      # pleasant quadrants
 HIGH_AROUSAL = {"Bucuros", "Stresat"}       # activated quadrants

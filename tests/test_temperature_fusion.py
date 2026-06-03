@@ -13,16 +13,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from affectus.shared.hrv.results import HrvMetrics, MultiWindowHrvResult
+from affectus.dsp.hrv.results import HrvMetrics, MultiWindowHrvResult
 from affectus.config import (
     BASELINE_MIN_REST_SAMPLES,
     TEMP_BASELINE_MIN_REST_EPOCHS,
 )
-from affectus.shared.baseline import RestBaselineStore
-from affectus.devices.wrist.modules.temperature import SkinTemperatureChannelState
+from affectus.dsp.baseline import RestBaselineStore
+from affectus.dsp.temperature import SkinTemperatureChannelState
 from affectus.engine.decision import DecisionState, decide
-from affectus.shared.signal_quality import SignalQuality
-from affectus.ingestion.messages import SensorBatchMessage
+from affectus.contract.capabilities import Capability
+from affectus.dsp.signal_quality import SignalQuality
+from affectus.io.messages import AcquisitionBatchMessage
 
 
 def _metrics(rmssd: float = 35.0, si: float = 18.0, hr: float = 85.0) -> HrvMetrics:
@@ -60,14 +61,15 @@ def _still_quality() -> SignalQuality:
 def _decide(baseline, temperature, *, skin_c: float, ambient_c: float = 24.0):
     metrics = _metrics()
     multi = MultiWindowHrvResult(None, metrics, None, None)
-    sensor = SensorBatchMessage(
-        timestamp_ms=0, heart_rate_bpm=85.0,
+    sensor = AcquisitionBatchMessage(
+        timestamp_publish_ms=0, timestamp_anchor_ms=0, sequence=0, heart_rate_bpm=85.0,
         skin_temperature_c=skin_c, ambient_temperature_c=ambient_c,
     )
     return decide(
         primary=metrics, multi=multi, sensor=sensor, quality=_still_quality(),
         baseline=baseline, temperature=temperature, state=DecisionState(),
         publish_epoch=True,
+        present=frozenset({Capability.IBI, Capability.HR, Capability.SKIN_TEMP}),
     )
 
 

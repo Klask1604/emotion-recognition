@@ -4,7 +4,7 @@ relative to the subject's own rest is what reads as positive/negative valence.""
 
 from __future__ import annotations
 
-from affectus.shared.valence_baseline import ValenceBaselineStore, ValenceSmoother
+from affectus.dsp.valence_baseline import ValenceBaselineStore, ValenceSmoother
 
 
 def _calibrate(store, value, n=10):

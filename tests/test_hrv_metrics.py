@@ -6,11 +6,11 @@ import math
 
 import numpy as np
 
-from affectus.shared.hrv.metrics import (
+from affectus.dsp.hrv.metrics import (
     compute_baevsky_indices,
     compute_hrv_from_entries,
 )
-from affectus.ingestion.messages import InterbeatIntervalEntry
+from affectus.io.messages import InterbeatIntervalEntry
 
 
 def test_compute_hrv_returns_none_for_empty_input():

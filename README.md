@@ -31,11 +31,13 @@ takes the output of the one before it:
    runs a CUSUM change-detection gate.
 5. The result is published back over MQTT as a `PhysiologyDecision`.
 
-The Python package is `affectus/`. The folders map to the stages above: `ingestion/`,
-`shared/dsp/` and `shared/hrv/`, `engine/` and `engine/channels/`, plus `contract/`
-for the shared message and field definitions, `devices/` for the per-device sensor
-adapters (wrist, chest, head), and `legacy/` for the parallel research engines that
-never feed the production verdict.
+The Python package is `affectus/`. The folders map to the stages above: `io/` for the
+wire messages and the watch→frame adapter, `dsp/filters/` and `dsp/hrv/` (plus the rest
+of `dsp/`) for the signal math, `engine/` for the verdict (pipeline, decision, and the
+flat channel builder `channels.py`), and `contract/` for the device capability contract
+and handshake (so a future chest/head device declares what it carries). `research/` holds
+the parallel research engines that never feed the production arousal verdict — they are
+observed-only on `biofizic/legacy/*` and `affectus/research/README.md` explains each one.
 
 ## Requirements
 
@@ -177,20 +179,20 @@ From the server to the watch and the dashboards:
 
 ```
 affectus/            Python package with the processing pipeline
-  contract/          Shared message and field definitions
-  ingestion/         Raw MQTT JSON to typed messages
-  shared/dsp/        Inter-beat-interval cleaning and PPG peaks
-  shared/hrv/        HRV metric calculations
-  engine/            Features to verdict (quality, baseline, fusion, Kalman, gate)
-  devices/           Per-device sensor adapters (wrist, chest, head)
-  legacy/            Parallel research engines, off by default
+  io/                Wire messages + the watch-batch -> SensorFrame adapter
+  contract/          Device capability contract + handshake (capabilities, frame, handshake)
+  dsp/filters/       Inter-beat-interval cleaning and PPG peaks
+  dsp/hrv/           HRV metric calculations
+  dsp/               The rest of the signal math (baseline, fusion, quality, ...)
+  engine/            Features to verdict (pipeline, decision, flat channel builder)
+  research/          Parallel research engines, observed-only (see research/README.md)
 services/            The MQTT processes
   compute_engine.py  Computes and publishes the verdict
   mqtt_logger.py     Writes every topic to InfluxDB
   state_api.py       Manual state publisher for VR testing
   test_engine.py     Cardiac comparator
 scripts/             Dashboard generation and the WESAD comparison report
-train/               Trains the WESAD RandomForest model used by the legacy engine
+train/               Trains the WESAD RandomForest model used by the research engine
 docker/              InfluxDB init script and Grafana provisioning
 tests/               Unit tests
 docker-compose.yml   The full stack

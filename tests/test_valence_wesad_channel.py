@@ -7,7 +7,7 @@ import math
 
 import pytest
 
-from affectus.engine.channels.valence_wesad import (
+from affectus.research.valence.wesad_channel import (
     ValenceWesadState,
     evaluate_valence_wesad,
     valence_weight,
@@ -45,28 +45,27 @@ def test_weight_is_zero_by_default_disabled():
     assert valence_weight(1.0) == 0.0
 
 
-def test_channel_skipped_in_registry_when_disabled(tmp_path):
-    from affectus.devices.registry import ChannelContext, build_channels
+def test_valence_channel_not_in_production_fusion(tmp_path):
+    # Valence is research-only now: it is observed on biofizic/legacy/* and never
+    # built into the production arousal fusion. build_channels yields only the
+    # arousal channels (hrv, hr, temp-if-present) — never valence_wesad.
+    from affectus.engine.channels import ChannelContext, build_channels
     from affectus.contract.capabilities import Capability
-    from affectus.shared.signal_quality import SignalQuality
-    from affectus.shared.baseline import RestBaselineStore
-    from affectus.shared.hrv.results import HrvMetrics
-    from affectus.ingestion.messages import SensorBatchMessage
+    from affectus.dsp.signal_quality import SignalQuality
+    from affectus.dsp.baseline import RestBaselineStore
+    from affectus.dsp.hrv.results import HrvMetrics
+    from affectus.io.messages import AcquisitionBatchMessage
 
-    state = ValenceWesadState()
-    g, ts = _synth_ppg()
     ctx = ChannelContext(
         primary=HrvMetrics(rmssd_ms=40, sdnn_ms=50, mean_interbeat_interval_ms=800,
                            mean_heart_rate_bpm=75, pnn50_percent=10, beat_count=40,
                            covered_seconds=30, kubios_stress_index=10.0),
-        sensor=SensorBatchMessage(timestamp_ms=0, heart_rate_bpm=70.0),
+        sensor=AcquisitionBatchMessage(timestamp_publish_ms=0, timestamp_anchor_ms=0, sequence=0, heart_rate_bpm=70.0),
         quality=SignalQuality(quality=0.9, usable=True, artifact_rate=0.0,
                               motion_energy=0.0, p_artifact=0.0, motion_state="still"),
         baseline=RestBaselineStore(path=tmp_path / "b.json"),
-        valence_wesad=state, ppg_green=g, ppg_ts_ms=ts,
         present=frozenset({Capability.IBI, Capability.HR, Capability.PPG}),
     )
     names = {c.name for c in build_channels(ctx)}
-    # cap is 0 -> valence channel produces no contribution -> not in the list
     assert "valence_wesad" not in names
     assert {"hrv", "hr"} <= names

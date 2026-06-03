@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import pytest
 
-from affectus.shared.hrv.metrics import compute_hrv_from_entries
-from affectus.shared.dsp.artifact_correction import correct_ibi_series
-from affectus.ingestion.messages import InterbeatIntervalEntry
+from affectus.dsp.hrv.metrics import compute_hrv_from_entries
+from affectus.dsp.filters.artifact_correction import correct_ibi_series
+from affectus.io.messages import InterbeatIntervalEntry
 
 
 def _alternating(mean_ms: int, d: int, n: int) -> list[InterbeatIntervalEntry]:

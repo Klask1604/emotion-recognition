@@ -12,15 +12,16 @@ from pathlib import Path
 
 import pytest
 
-from affectus.shared.hrv.results import HrvMetrics, MultiWindowHrvResult
+from affectus.dsp.hrv.results import HrvMetrics, MultiWindowHrvResult
 from affectus.config import (
     BASELINE_MIN_REST_SAMPLES,
     HR_CHANNEL_CONFIDENCE,
 )
 from affectus.engine.decision import DecisionState, decide
+from affectus.contract.capabilities import Capability
 from affectus.engine.pipeline import PhysiologyPipeline
-from affectus.shared.signal_quality import SignalQuality
-from affectus.ingestion.messages import SensorBatchMessage
+from affectus.dsp.signal_quality import SignalQuality
+from affectus.io.messages import AcquisitionBatchMessage
 
 
 def _metrics(rmssd: float = 40.0, si: float = 12.0, hr: float = 80.0) -> HrvMetrics:
@@ -50,7 +51,7 @@ def _decide(pipeline: PhysiologyPipeline, quality: SignalQuality, sdk_hr: float)
     # whose absence (0) means there is no robust motion channel.
     metrics = _metrics(hr=80.0)
     multi = MultiWindowHrvResult(None, metrics, None, None)
-    sensor = SensorBatchMessage(timestamp_ms=0, heart_rate_bpm=sdk_hr)
+    sensor = AcquisitionBatchMessage(timestamp_publish_ms=0, timestamp_anchor_ms=0, sequence=0, heart_rate_bpm=sdk_hr)
     return decide(
         primary=metrics,
         multi=multi,
@@ -59,6 +60,7 @@ def _decide(pipeline: PhysiologyPipeline, quality: SignalQuality, sdk_hr: float)
         baseline=pipeline.baseline,
         state=pipeline.decision_state,
         publish_epoch=True,
+        present=frozenset({Capability.IBI, Capability.HR}),
     )
 
 

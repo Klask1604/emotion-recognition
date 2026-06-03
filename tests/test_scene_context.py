@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 
-from affectus.shared.scene_context import context_to_valence_prior, valence_prior_label
+from affectus.dsp.scene_context import context_to_valence_prior, valence_prior_label
 from services.compute_engine import ComputeEngineService
 
 

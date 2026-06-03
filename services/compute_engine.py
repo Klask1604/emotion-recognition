@@ -36,13 +36,13 @@ from affectus.config import (
     SKEW_BACKLOG_WARN_SEC,
     WINDOWS_PUBLISH_INTERVAL_SECONDS,
 )
-from affectus.shared.arousal_mapper import arousal_scale_10_to_label
-from affectus.shared.emotion import emotion_verdict, ValenceVerdictStabilizer
+from affectus.dsp.arousal_mapper import arousal_scale_10_to_label
+from affectus.dsp.emotion import emotion_verdict, ValenceVerdictStabilizer
 from affectus.engine.pipeline import PhysiologyPipeline
-from affectus.legacy import LegacyEngines, toggles as legacy_toggles
-from affectus.ingestion.messages import AcquisitionBatchMessage, IbiBatchMessage
-from affectus.shared.hrv.results import MultiWindowResult, WindowResult
-from affectus.shared.hrv.results import PhysiologyDecision
+from affectus.research import ResearchEngines, toggles as research_toggles
+from affectus.io.messages import AcquisitionBatchMessage, IbiBatchMessage
+from affectus.dsp.hrv.results import MultiWindowResult, WindowResult
+from affectus.dsp.hrv.results import PhysiologyDecision
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,7 +71,7 @@ def _parse_acquisition(data: dict) -> AcquisitionBatchMessage | None:
     ppg_green: list[int] = []
     ppg_ir: list[int] = []
     ppg_ts: list[int] = []
-    if legacy_toggles.ENABLE_RAW_PPG:
+    if research_toggles.ENABLE_RAW_PPG:
         ppg = data.get("ppg") or {}
         ppg_green = [int(x) for x in (ppg.get("green") or [])]
         ppg_ir = [int(x) for x in (ppg.get("ir") or [])]
@@ -130,7 +130,7 @@ def _parse_ecg_calibration(data: dict) -> tuple[list[int], list[int], list[int],
 class ComputeEngineService:
     def __init__(self, broker: str, port: int) -> None:
         self.pipeline = PhysiologyPipeline()
-        self.legacy = LegacyEngines()
+        self.research = ResearchEngines()
         self._last_live_at = 0.0
         self._last_windows_at = 0.0
         self._last_epoch_at = 0.0
@@ -172,12 +172,10 @@ class ComputeEngineService:
         # One stabiliser PER model so each emotion verdict (WESAD/EEVR/CASE) is
         # smoothed independently and the dashboard reads a ready quadrant instead
         # of recomputing the logic in SQL (single source of truth in Python).
+        # The watch's 2D verdict stabiliser (WESAD valence + arousal). The per-model
+        # dashboard stabilisers (wesad/eevr/case) now live inside each ValenceTrack
+        # in ResearchEngines, so there is no parallel dict to keep in sync here.
         self._valence_stabilizer = ValenceVerdictStabilizer()
-        self._emotion_stabilizers = {
-            "wesad": ValenceVerdictStabilizer(),
-            "eevr": ValenceVerdictStabilizer(),
-            "case": ValenceVerdictStabilizer(),
-        }
         # Rolling ECG calibration buffer (raw 500 Hz samples + timestamps + lead).
         # Filled by the biofizic/ecg/calibrate handler during a finger-hold,
         # cleared on every cmd/calibrate so each calibration starts clean.
@@ -219,7 +217,7 @@ class ComputeEngineService:
         reply status:"ok" with the active module list. On too few sensors to
         classify, reply status:"error" with the reason — the watch shows it and
         does not stream."""
-        from affectus.contract.schema import parse_capabilities, validate_announcement
+        from affectus.contract.handshake import parse_capabilities, validate_announcement
 
         if not isinstance(data, dict):
             return
@@ -229,7 +227,12 @@ class ComputeEngineService:
         ack = validate_announcement(cap_names, profile=profile)
 
         if ack.status == "ok":
-            self._announced_caps[client_id] = parse_capabilities(cap_names)
+            caps = parse_capabilities(cap_names)
+            self._announced_caps[client_id] = caps
+            # The declared sensors are the single source of truth for which fusion
+            # channels run — push them into the pipeline so decide() gates on the
+            # announcement, not on a hardcoded default.
+            self.pipeline.set_declared_capabilities(caps)
             log.info("handshake ok: %s announced %s -> modules %s",
                      client_id, sorted(cap_names), ack.modules_active)
         else:
@@ -260,7 +263,7 @@ class ComputeEngineService:
                 self._ecg_cal_ts = self._ecg_cal_ts[-max_samples:]
                 self._ecg_cal_lead = self._ecg_cal_lead[-max_samples:]
 
-        from affectus.shared.dsp.ecg_peaks import detect_ecg_rpeaks
+        from affectus.dsp.filters.ecg_peaks import detect_ecg_rpeaks
 
         res = detect_ecg_rpeaks(self._ecg_cal_mv, self._ecg_cal_ts, self._ecg_cal_lead)
         # Each interval is keyed by its END peak timestamp; feed only beats newer
@@ -313,7 +316,7 @@ class ComputeEngineService:
         # Subscribe to the 100 Hz on-demand PPG when ANY valence engine that uses
         # the high-rate waveform is active, so each gets the sharp stream instead
         # of falling back to the 25 Hz batch (which collapses fine-HRV models).
-        if any(getattr(self.legacy, name, None) is not None for name in
+        if any(getattr(self.research, name, None) is not None for name in
                ("_valence_fd", "_valence_wesad", "_valence_eevr", "_valence_case")):
             topics.append(("biofizic/ppg/ondemand", 0))
         for topic, qos in topics:
@@ -333,10 +336,10 @@ class ComputeEngineService:
             # 100 Hz on-demand PPG, wrapped as {"recv_ms":.., "samples":[{ts,
             # green,ir,red},..]}. Feed the valence-FD high-rate buffer; never
             # touches the decision.
-            vfd = getattr(self.legacy, "_valence_fd", None)
-            vw = getattr(self.legacy, "_valence_wesad", None)
-            ve = getattr(self.legacy, "_valence_eevr", None)
-            vc = getattr(self.legacy, "_valence_case", None)
+            vfd = getattr(self.research, "_valence_fd", None)
+            vw = getattr(self.research, "_valence_wesad", None)
+            ve = getattr(self.research, "_valence_eevr", None)
+            vc = getattr(self.research, "_valence_case", None)
             # Every valence engine that consumes the 100 Hz waveform must get it,
             # or it falls back to the 25 Hz batch buffer and its morphology/HRV
             # features degrade (CASE, which leans on fine HRV LF/HF, collapses to
@@ -383,6 +386,9 @@ class ComputeEngineService:
             reactivity = data.get("reactivity")
             reactivity = reactivity if reactivity in ("low", "normal", "high") else None
             self.pipeline.reset_baseline(reported, reported_valence, reactivity)
+            # Valence calibration lives in research now; re-anchor it on the same
+            # recalibration so every model's personal neutral is re-measured.
+            self.research.reset_valence_tracks(reported_valence)
             # ECG calibration is disabled (Samsung ECG R-peak detection was
             # unreliable on the real watch). Calibration always uses the PPG
             # resting path. The ECG code stays on disk for future research.
@@ -444,7 +450,7 @@ class ComputeEngineService:
                 batch=batch,
                 end_timestamp_ms=batch.timestamp_anchor_ms,
             )
-            if self.legacy.active:
+            if self.research.active:
                 self._publish_legacy(client, batch, result)
             return
 
@@ -538,21 +544,22 @@ class ComputeEngineService:
             })
         client.publish("biofizic/live", json.dumps(payload), qos=0)
 
-    def _enrich_valence(self, out_dict, vbase, vsmoother, result,
-                        model_key=None) -> float | None:
+    def _enrich_valence(self, out_dict, track, result) -> float | None:
         """Recenter one valence model's raw valence_z on the subject's personal
         resting baseline and add the calibrated fields to its published dict, the
-        same way WESAD does. Used for WESAD, EEVR and CASE so all three show
-        subject-relative emotion (neutral measured, not assumed 0). Returns the
-        60 s-smoothed personal valence (or None if no valence_z this epoch).
+        same way for WESAD, EEVR and CASE so all three show subject-relative emotion
+        (neutral measured, not assumed 0). Returns the 60 s-smoothed personal valence
+        (or None if no valence_z this epoch).
 
-        When model_key is given, also folds this epoch into that model's own
-        verdict stabiliser (confidence gate + median + hysteresis) and attaches
-        the READY quadrant (emotion / emotion_code) to the dict — so the
-        dashboard reads a stable verdict instead of recomputing it in SQL."""
+        `track` is the model's ValenceTrack (baseline + smoother + verdict
+        stabiliser). It also folds this epoch into the track's stabiliser (confidence
+        gate + median + hysteresis) and attaches the READY quadrant (emotion /
+        emotion_code) to the dict — so the dashboard reads a stable verdict instead
+        of recomputing it in SQL."""
         vz = out_dict.get("valence_z")
         if vz is None:
             return None
+        vbase = track.baseline
         is_resting = (
             result is not None
             and getattr(result, "motion_state", "") == "still"
@@ -561,7 +568,7 @@ class ComputeEngineService:
         if is_resting:
             vbase.observe_resting(float(vz), now=time.time())
         personal = vbase.valence_personal(float(vz))
-        smoothed = vsmoother.update(personal, time.time())
+        smoothed = track.smoother.update(personal, time.time())
         deadband = vbase.deadband(
             reactivity_scale=self.pipeline.reactivity.deadband_scale
         )
@@ -576,15 +583,13 @@ class ComputeEngineService:
         # gated on VR: valence here is the model's own personal-calibrated pulse
         # valence; arousal is the validated z. Honest at low confidence because
         # the stabiliser's gate pulls uncertain epochs to Neutru.
-        stab = self._emotion_stabilizers.get(model_key) if model_key else None
-        if stab is not None:
-            arousal_z = self._current_arousal_z(result)
-            conf = float(out_dict.get("confidence") or 0.0)
-            label, code = stab.update(
-                arousal_z, smoothed, conf, deadband, vbase.is_ready,
-            )
-            out_dict["emotion"] = label
-            out_dict["emotion_code"] = code
+        arousal_z = self._current_arousal_z(result)
+        conf = float(out_dict.get("confidence") or 0.0)
+        label, code = track.stabilizer.update(
+            arousal_z, smoothed, conf, deadband, vbase.is_ready,
+        )
+        out_dict["emotion"] = label
+        out_dict["emotion_code"] = code
         return smoothed
 
     @staticmethod
@@ -597,7 +602,7 @@ class ComputeEngineService:
 
     def _publish_legacy(self, client, batch, result) -> None:
         """Publish the parallel research engines on biofizic/legacy/* (never VR)."""
-        out = self.legacy.run(batch=batch, result=result, baseline=self.pipeline.baseline)
+        out = self.research.run(batch=batch, result=result, baseline=self.pipeline.baseline)
         ts = self._anchor_ms
         log.debug("legacy out: ppg=%s wesad=%s resp=%s",
                   out.ppg is not None, out.wesad is not None, out.respiration)
@@ -612,10 +617,9 @@ class ComputeEngineService:
         if out.valence_wesad is not None:
             # Personal valence calibration: recenter the cross-device WESAD model
             # on this subject (neutral measured on resting epochs, not assumed 0).
-            vbase = self.pipeline.valence_baseline
-            smoothed = self._enrich_valence(
-                out.valence_wesad, vbase, self.pipeline.valence_smoother, result,
-                model_key="wesad")
+            wesad_track = self.research.valence_tracks["wesad"]
+            vbase = wesad_track.baseline
+            smoothed = self._enrich_valence(out.valence_wesad, wesad_track, result)
             if smoothed is not None:
                 # WESAD is the channel that drives the watch verdict, so it also
                 # caches for the decision payload and advances the stabiliser.
@@ -656,14 +660,12 @@ class ComputeEngineService:
         # calibrated emotion for all three — not raw valence. They do NOT feed the
         # watch verdict (no stabiliser / decision cache).
         if out.valence_eevr is not None:
-            self._enrich_valence(out.valence_eevr, self.pipeline.valence_baseline_eevr,
-                                 self.pipeline.valence_smoother_eevr, result,
-                                 model_key="eevr")
+            self._enrich_valence(
+                out.valence_eevr, self.research.valence_tracks["eevr"], result)
             client.publish("biofizic/legacy/valence_eevr", json.dumps({"ts": ts, **out.valence_eevr}), qos=0)
         if out.valence_case is not None:
-            self._enrich_valence(out.valence_case, self.pipeline.valence_baseline_case,
-                                 self.pipeline.valence_smoother_case, result,
-                                 model_key="case")
+            self._enrich_valence(
+                out.valence_case, self.research.valence_tracks["case"], result)
             client.publish("biofizic/legacy/valence_case", json.dumps({"ts": ts, **out.valence_case}), qos=0)
         # Polarity (negative / neutral / positive). The 3-class model has its own
         # neutral class, but at low arousal it can still mistake a resting subject
@@ -704,13 +706,13 @@ class ComputeEngineService:
         """A feedback tap: pair the user's chosen Russell quadrant with the latest
         33-feature PPG vector + what the three models predicted, and append it to
         data/feedback_labels.jsonl. Re-publish a summary for the Grafana dashboard."""
-        from affectus.shared.feedback_store import QUADRANTS, append_feedback
+        from affectus.dsp.feedback_store import QUADRANTS, append_feedback
 
         quadrant = data.get("quadrant")
         if quadrant not in QUADRANTS:
             log.warning("feedback ignored: bad quadrant %r", quadrant)
             return
-        eng = getattr(self.legacy, "_valence_wesad", None)
+        eng = getattr(self.research, "_valence_wesad", None)
         features = getattr(eng, "last_features", None) if eng is not None else None
         feat_ts = getattr(eng, "last_features_ts", 0) if eng is not None else 0
         # Feature freshness: how old is the labelled window vs the tap.
@@ -739,7 +741,7 @@ class ComputeEngineService:
         """VR scene context from Unity: cache the raw visual cues + the derived
         valence prior, timestamped, so the emotion verdict can use the SCENE's
         valence (honest) when it is fresh. Degenerate input -> ignored."""
-        from affectus.shared.scene_context import (
+        from affectus.dsp.scene_context import (
             context_to_valence_prior, valence_prior_label,
         )
 

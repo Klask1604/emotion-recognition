@@ -34,9 +34,9 @@ if str(ROOT) not in sys.path:
 
 import affectus._bootstrap  # noqa: F401
 
-from affectus.shared.baseline import RestBaselineStore
+from affectus.dsp.baseline import RestBaselineStore
 from affectus.engine.pipeline import PhysiologyPipeline
-from affectus.ingestion.messages import (
+from affectus.io.messages import (
     AcquisitionBatchMessage,
     InterbeatIntervalEntry,
 )
@@ -257,6 +257,12 @@ class _InMemoryBaseline(RestBaselineStore):
 def _make_pipeline() -> PhysiologyPipeline:
     p = PhysiologyPipeline()
     p.baseline = _InMemoryBaseline()
+    # Simulate the watch handshake: declare the wrist sensors so the pipeline runs
+    # the fusion channels (no declaration -> no verdict, same as production).
+    from affectus.contract.capabilities import Capability
+    p.set_declared_capabilities(
+        frozenset({Capability.IBI, Capability.HR, Capability.SKIN_TEMP})
+    )
     return p
 
 

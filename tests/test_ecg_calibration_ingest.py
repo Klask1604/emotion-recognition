@@ -26,7 +26,7 @@ def _service(tmp_path):
     svc = ComputeEngineService.__new__(ComputeEngineService)
     # Build a real pipeline but point its persisted stores at tmp_path so the test
     # is isolated from the host's data/ files.
-    from affectus.shared.baseline import RestBaselineStore
+    from affectus.dsp.baseline import RestBaselineStore
     svc.pipeline = PhysiologyPipeline()
     svc.pipeline.baseline = RestBaselineStore(path=tmp_path / "rest.json")
     svc._calibrating = True

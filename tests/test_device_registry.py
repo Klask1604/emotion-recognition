@@ -1,12 +1,11 @@
-"""Device-module registry + handshake validation: modules build only when their
+"""Channel gating + handshake validation: channels are announced only when their
 required capabilities are present; the ack reflects the same gating; devices that
 cannot be classified are rejected."""
 
 from __future__ import annotations
 
 from affectus.contract.capabilities import Capability, DeviceCapabilities
-from affectus.contract.schema import validate_announcement
-from affectus.devices.registry import modules_for
+from affectus.contract.handshake import modules_for, validate_announcement
 
 
 def _caps(*present, profile="wrist_ppg"):
@@ -50,9 +49,3 @@ def test_announcement_ignores_unknown_capabilities():
     # it must not crash, and IBI still makes it classifiable.
     ack = validate_announcement(["ibi", "made_up_sensor"])
     assert ack.status == "ok"
-
-
-def test_chest_head_families_are_empty_templates():
-    import affectus.devices as devices
-    assert devices.chest.MODULES == []
-    assert devices.head.MODULES == []

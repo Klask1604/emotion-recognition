@@ -34,7 +34,7 @@ BROKER = os.environ.get("MQTT_BROKER", "paxbespoke.automateflow.ro")
 PORT = int(os.environ.get("MQTT_PORT", "1883"))
 TOPIC = "biofizic/state"
 
-# Matches affectus.shared.arousal_mapper.arousal_scale_10_to_label.
+# Matches affectus.dsp.arousal_mapper.arousal_scale_10_to_label.
 def emotion_label(arousal_10: int) -> str:
     if arousal_10 <= 2:
         return "Relaxat"

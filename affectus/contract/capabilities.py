@@ -1,11 +1,10 @@
 """
 Capability contract: a wearable is described by WHICH SIGNALS it carries, not by
-its model. A device adapter (see devices/<family>/adapter.py) maps the raw device
-payload into a SensorFrame (contract/frame.py); the pipeline then runs only the
-feature-modules whose required capabilities are present — no branching on
-"is this a GW8".
+its model. The device announces its capabilities at the handshake
+(contract/handshake.py); the pipeline then runs only the fusion channels whose
+required capability was declared — no branching on "is this a GW8".
 
-Presence is a capability flag (run the module at all); usefulness stays a weight
+Presence is a capability flag (run the channel at all); usefulness stays a weight
 (how much it contributes). Two clean gates, never one overloaded.
 """
 

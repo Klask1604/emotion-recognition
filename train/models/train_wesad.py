@@ -30,9 +30,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import affectus._bootstrap  # noqa: F401
-from affectus.shared.hrv.metrics import compute_hrv_from_entries
-from affectus.ingestion.messages import InterbeatIntervalEntry
-from affectus.legacy.wesad import WESAD_FEATURE_NAMES, wesad_feature_vector
+from affectus.dsp.hrv.metrics import compute_hrv_from_entries
+from affectus.io.messages import InterbeatIntervalEntry
+from affectus.research.wesad_stress_engine import WESAD_FEATURE_NAMES, wesad_feature_vector
 
 ECG_FS = 700
 WINDOW_SEC = 30

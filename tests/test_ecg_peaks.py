@@ -9,7 +9,7 @@ import pytest
 
 pytest.importorskip("scipy")
 
-from affectus.shared.dsp.ecg_peaks import detect_ecg_rpeaks
+from affectus.dsp.filters.ecg_peaks import detect_ecg_rpeaks
 
 
 def _synth_ecg(seconds=20.0, fs=500, bpm=75, lead_off_window=None):

@@ -13,8 +13,8 @@ import math
 import numpy as np
 
 from affectus.config import RSA_MIN_BEATS
-from affectus.engine.channels.respiration_rsa import estimate_respiration_rsa
-from affectus.ingestion.messages import InterbeatIntervalEntry
+from affectus.research.respiration.rsa import estimate_respiration_rsa
+from affectus.io.messages import InterbeatIntervalEntry
 
 
 def _synth_ibi(

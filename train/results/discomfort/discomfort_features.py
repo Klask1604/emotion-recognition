@@ -30,7 +30,7 @@ warnings.filterwarnings("ignore")
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from affectus.legacy.valence_features import VALENCE_FEATURE_NAMES  # noqa: E402
+from affectus.research.valence.features import VALENCE_FEATURE_NAMES  # noqa: E402
 
 # HR / arousal-like features (rate-driven) — what we want to look BEYOND.
 HR_LIKE = {"hrv_mean_hr", "pulse_width", "hrv_rmssd", "hrv_sdnn", "hrv_pnn50"}

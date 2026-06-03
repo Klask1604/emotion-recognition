@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 warnings.filterwarnings("ignore")
 
-from affectus.legacy.valence_features import VALENCE_FEATURE_NAMES  # noqa: E402
+from affectus.research.valence.features import VALENCE_FEATURE_NAMES  # noqa: E402
 
 CACHE = ROOT / "data" / "eevr_stratified.npz"
 OUT = ROOT / "models" / "valence_eevr.joblib"

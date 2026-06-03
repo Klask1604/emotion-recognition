@@ -24,7 +24,7 @@ remains identical — this refactor is purely internal consolidation.
 
 from __future__ import annotations
 
-from affectus.shared.hrv.results import (
+from affectus.dsp.hrv.results import (
     HrvMetrics,
     MultiWindowHrvResult,
     PhysiologyDecision,
@@ -34,21 +34,22 @@ from affectus.config import (
     CHANNEL_HRV_DOMINANT_ABOVE,
     PRELIMINARY_CONFIDENCE_CAP,
 )
-from affectus.shared.arousal_mapper import (
+from affectus.dsp.arousal_mapper import (
     arousal_scale_10_to_label,
     kubios_zone_for_stress_index,
     personal_arousal_10,
     population_arousal_10,
 )
-from affectus.shared.baseline import RestBaselineStore
-from affectus.devices.wrist.modules.temperature import SkinTemperatureChannelState
-from affectus.shared.signal_quality import SignalQuality
-from affectus.ingestion.messages import SensorBatchMessage
+from affectus.dsp.baseline import RestBaselineStore
+from affectus.dsp.temperature import SkinTemperatureChannelState
+from affectus.dsp.signal_quality import SignalQuality
+from affectus.io.messages import AcquisitionBatchMessage
+from affectus.engine.channels import ChannelContext, build_channels
 
 # The fusion math (state, Kalman, CUSUM, channel weighted-mean) is device-
 # agnostic and lives in shared/. Re-exported here so existing importers of
 # `engine.decision` (registry, pipeline, tests) keep working unchanged.
-from affectus.shared.fusion import (  # noqa: F401
+from affectus.dsp.fusion import (  # noqa: F401
     DecisionState,
     FusionChannel,
     _cusum_update,
@@ -63,7 +64,7 @@ def decide(
     *,
     primary: HrvMetrics,
     multi: MultiWindowHrvResult,
-    sensor: SensorBatchMessage | None,
+    sensor: AcquisitionBatchMessage | None,
     quality: SignalQuality,
     baseline: RestBaselineStore,
     state: DecisionState,
@@ -103,16 +104,13 @@ def decide(
     # touching this math; with only HRV+HR the result is identical to the prior
     # z_fused = Q·z_hrv + (1-Q)·z_hr.
     hrv_weight = quality.quality
-    # Channels are assembled by the capability-gated registry. `present` declares
-    # which signals this frame carries; for a wrist frame (IBI+HR+SKIN_TEMP) the
-    # registry yields exactly [hrv, hr, (temp if it contributes)], identical to
-    # the previous inline list. Default to that capability set so existing
-    # callers/tests are unchanged.
-    from affectus.devices.registry import ChannelContext, build_channels
-    from affectus.contract.capabilities import Capability
-
+    # `present` is the set of sensors the device DECLARED at the handshake — the
+    # single source of truth for which channels run. For a wrist watch
+    # (IBI+HR+SKIN_TEMP) this yields [hrv, hr, (temp when it has data)]. No
+    # declaration means no channels: the pipeline already skips decide() in that
+    # case, and an empty set here keeps the two consistent (no hidden default).
     if present is None:
-        present = frozenset({Capability.IBI, Capability.HR, Capability.SKIN_TEMP})
+        present = frozenset()
     channels = build_channels(ChannelContext(
         primary=primary, sensor=sensor, quality=quality, baseline=baseline,
         temperature=temperature, present=present,

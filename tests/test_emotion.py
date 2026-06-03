@@ -3,7 +3,7 @@ Grafana circumplex dashboard (0 Neutru, 1 Calm, 2 Trist, 3 Bucuros, 4 Stresat)."
 
 from __future__ import annotations
 
-from affectus.shared.emotion import emotion_verdict, ValenceVerdictStabilizer
+from affectus.dsp.emotion import emotion_verdict, ValenceVerdictStabilizer
 
 DB = 0.2  # a representative dead-band
 

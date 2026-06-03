@@ -55,3 +55,5 @@ data/*.npz
 
 # generated figures
 train/figs/
+
+docs/

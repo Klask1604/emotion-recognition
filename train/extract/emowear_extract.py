@@ -19,8 +19,8 @@ warnings.filterwarnings("ignore")
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from affectus.legacy.valence_ppg_fd import extract_valence_fd_features  # noqa: E402
-from affectus.legacy.valence_ppg_morph import (  # noqa: E402
+from affectus.research.valence.ppg_fd import extract_valence_fd_features  # noqa: E402
+from affectus.research.valence.ppg_morph import (  # noqa: E402
     MORPH_FEATURE_NAMES,
     extract_morph_features,
 )
