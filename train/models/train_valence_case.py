@@ -36,7 +36,7 @@ OUT = ROOT / "models" / "valence_case.joblib"
 
 
 def main() -> None:
-    from sklearn.svm import SVC
+    from sklearn.linear_model import LogisticRegression
     from sklearn.preprocessing import StandardScaler
     from sklearn.pipeline import make_pipeline
     from sklearn.model_selection import LeaveOneGroupOut
@@ -66,7 +66,7 @@ def main() -> None:
         if len(np.unique(y[tr])) < 2 or len(np.unique(y[te])) < 2:
             continue
         clf = make_pipeline(StandardScaler(),
-                            SVC(kernel="rbf", class_weight="balanced"))
+                            LogisticRegression(max_iter=1000, class_weight="balanced"))
         clf.fit(X[tr], y[tr])
         baccs.append(balanced_accuracy_score(y[te], clf.predict(X[te])))
     print(f"LOSO balanced accuracy: {np.mean(baccs):.1%} (± {np.std(baccs):.1%})")
@@ -75,8 +75,7 @@ def main() -> None:
     mean = X.mean(axis=0)
     std = X.std(axis=0) + 1e-9
     Xn = (X - mean) / std
-    final = SVC(kernel="rbf", C=1.0, gamma="scale",
-                class_weight="balanced", probability=True)
+    final = LogisticRegression(max_iter=1000, class_weight="balanced")
     final.fit(Xn, y)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump({

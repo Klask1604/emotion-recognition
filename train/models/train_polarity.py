@@ -94,7 +94,7 @@ def _apply_coral(X, A, mu_s, sd_s, sd_t):
 
 
 def main() -> None:
-    from sklearn.svm import SVC
+    from sklearn.linear_model import LogisticRegression
     from sklearn.model_selection import LeaveOneGroupOut
     from sklearn.metrics import balanced_accuracy_score
 
@@ -127,7 +127,7 @@ def main() -> None:
         if len(np.unique(y[tr])) < 2:
             continue
         fm, fs = Xc[tr].mean(0), Xc[tr].std(0) + 1e-9
-        m = SVC(kernel="rbf", class_weight="balanced", probability=True)
+        m = LogisticRegression(max_iter=1000, class_weight="balanced")
         m.fit((Xc[tr] - fm) / fs, y[tr])
         yt += list(y[te]); yp += list(m.predict((Xc[te] - fm) / fs))
     yt, yp = np.array(yt), np.array(yp)
@@ -141,7 +141,7 @@ def main() -> None:
     # final model on all CORAL-aligned data
     feature_mean = Xc.mean(0)
     feature_std = Xc.std(0) + 1e-9
-    model = SVC(kernel="rbf", class_weight="balanced", probability=True)
+    model = LogisticRegression(max_iter=1000, class_weight="balanced")
     model.fit((Xc - feature_mean) / feature_std, y)
 
     bundle = {

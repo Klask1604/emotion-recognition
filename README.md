@@ -1,110 +1,204 @@
-# Biofizic — Architecture (master / high-level)
+# Biofizic server
 
-Real-time physiological-state classifier for VR. A **Galaxy Watch 7** streams sensor
-data over MQTT to a **Python server** (Docker) that turns it into a continuous arousal
-verdict, stores everything in **InfluxDB 3**, and visualizes it in **Grafana**. The
-watch also renders the live verdict.
+This is the server side of Biofizic, a real-time physiological arousal estimator for
+virtual reality. A Galaxy Watch streams sensor data over MQTT. This server cleans the
+signal, computes a continuous arousal estimate, stores everything in InfluxDB, and
+serves dashboards in Grafana. The watch app lives in a separate repository.
 
-This file defines the system top-down. Each big folder has its own `ARCHITECTURE.md`
-with exact **input → output**; this master links them and shows how they connect.
-For the narrative explanation + real session reports, see [`docs/architecture.md`](docs/architecture.md).
+The watch only acquires and sends raw signals. All of the heart-rate-variability work,
+the personal baseline, and the arousal verdict are computed here.
 
----
+## How it works
 
-## Big picture
+The server runs as two independent processes. Neither one calls the other; they only
+talk through MQTT topics.
 
-```
-┌─────────────────────────┐         MQTT          ┌──────────────────────────┐
-│   GALAXY WATCH 7 (Kotlin)│  ───── (WiFi) ─────▶  │   SERVER (Python, Docker) │
-│  sensors → IBI pipeline  │  biofizic/acquisition │  compute-engine           │
-│  → AcquisitionAssembler  │  /batch (1 Hz, atomic)│  (compute pipeline)       │
-│  → MQTT                  │  biofizic/cmd/calibrate│ mqtt-logger (writes DB)  │
-│  UI (Compose) ◀──────────│  biofizic/state, ...  │  ──▶ InfluxDB 3 ──▶ Grafana
-└─────────────────────────┘  ◀─────────────────── └──────────────────────────┘
-```
+- `compute-engine` reads the watch telemetry, runs the processing pipeline, and
+  publishes the arousal state.
+- `mqtt-logger` listens to every topic and writes it into InfluxDB so Grafana can
+  draw the dashboards.
 
-Two server processes, both MQTT clients (they never call each other):
-- **compute-engine** — computes the verdict.
-- **mqtt-logger** — writes every topic to InfluxDB for the dashboards.
+Inside the compute engine, data flows through a fixed sequence of stages. Each stage
+takes the output of the one before it:
 
----
+1. Ingestion parses the raw MQTT JSON into typed message objects.
+2. The DSP stage cleans the inter-beat-interval series and rejects artifacts.
+3. Feature extraction computes HRV metrics (RMSSD, SDNN, stress index, mean HR) over
+   30, 60, and 90 second windows.
+4. The engine turns the features into a verdict. It gauges signal quality, standardizes
+   each feature against the personal baseline with a z-score, fuses the heart-rate and
+   variability channels by quality, smooths the result with a scalar Kalman filter, and
+   runs a CUSUM change-detection gate.
+5. The result is published back over MQTT as a `PhysiologyDecision`.
 
-## End-to-end data flow
+The Python package is `affectus/`. The folders map to the stages above: `ingestion/`,
+`shared/dsp/` and `shared/hrv/`, `engine/` and `engine/channels/`, plus `contract/`
+for the shared message and field definitions, `devices/` for the per-device sensor
+adapters (wrist, chest, head), and `legacy/` for the parallel research engines that
+never feed the production verdict.
 
-```
-WATCH                                   SERVER (compute-engine)
-sensors ─▶ signal/ (clean beats)        ingestion/ (parse JSON → typed msgs)
-        ─▶ acquisition/ (atomic batch)         │
-        ─▶ MQTT acquisition/batch ───────────▶ dsp/ (clean IBI, peaks) ─▶ artifact_rate
-                                               │
-                                        compute_features/ (RMSSD, SI, mean_hr per 30/60/90s)
-                                               │
-                                        engine/ (quality → baseline z → fusion → Kalman → gate)
-                                               │
-                                        PhysiologyDecision ─▶ MQTT state/live/windows/live
-                                                                   │
-WATCH UI ◀── MQTT state/calibration ◀──────────────────────────────┘
-                                        mqtt-logger ─▶ InfluxDB ─▶ Grafana
-```
+## Requirements
 
-The chain is contractual: `ingestion.OUT = dsp.IN`, `dsp.OUT = compute_features.IN`,
-`compute_features.OUT = engine.IN`, `engine.OUT = services publish`.
+- Docker and Docker Compose, for the normal way to run the stack.
+- An MQTT broker reachable from both the watch and the server. Mosquitto on the host
+  works fine.
+- Python 3.11 if you want to run a process directly, without Docker.
 
----
+## Local setup
 
-## MQTT topic map
+Clone the repository and copy the environment template:
 
-```
-WATCH → SERVER:
-  biofizic/acquisition/batch    (1 Hz) IBI + acc/gyro stats + temp + ts_anchor + sync diag
-  biofizic/cmd/calibrate        (re)calibration command + reported_arousal
-
-SERVER → WATCH / DASHBOARDS:
-  biofizic/state                (30s) epoch verdict (retained, QoS1)
-  biofizic/state/live           (1 Hz) live verdict
-  biofizic/state/windows        HRV over 30/60/90s
-  biofizic/live                 (1 Hz) ALIGNED stream, everything on ts_anchor
-  biofizic/calibration/status   calibration phase (collecting/done)
-  biofizic/legacy/{ppg,wesad,valence}  research engines
+```bash
+cp .env.example .env
 ```
 
----
+Edit `.env` and fill in your own values:
 
-## Folder index
+```
+MQTT_BROKER=host.docker.internal
+MQTT_PORT=1883
+INFLUX_URL=http://influxdb:8181
+INFLUX_DATABASE=biofizic
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=admin
+```
 
-### Server (`C:\Users\doltu\Desktop\Licenta`)
-| Folder | Purpose | Doc |
+If the broker runs natively on the host (not in Docker), set
+`MQTT_BROKER=host.docker.internal` so the containers can reach it. The compose file
+already maps that name to the host gateway.
+
+## Run with Docker
+
+Start the whole stack:
+
+```bash
+docker compose up -d --build
+```
+
+This brings up four things: InfluxDB, a one-shot init container that creates the
+database, Grafana with the dashboards already provisioned, and the compute engine and
+logger. Once it is up:
+
+- Grafana is at `http://localhost:3000` (log in with the values from `.env`).
+- InfluxDB is at `http://localhost:8181`.
+
+Watch the logs to confirm the engine is receiving batches:
+
+```bash
+docker compose logs -f compute-engine
+```
+
+Stop everything:
+
+```bash
+docker compose down
+```
+
+### Optional services
+
+Two extra services exist behind the `test` profile and do not start by default.
+
+The cardiac comparator rolls the production DSP over three watch signal sources and
+republishes the derived HR and RMSSD for the Grafana comparator board:
+
+```bash
+docker compose --profile test up -d test-engine
+```
+
+The state API is a manual publisher for VR testing. It lets you drive scene transitions
+over HTTP without wearing the watch, by publishing the same `biofizic/state` schema that
+Unity reads:
+
+```bash
+docker compose up -d state-api
+```
+
+It then listens on `http://localhost:8200`.
+
+## Run without Docker
+
+Useful for development and for running the tests. Create a virtual environment and
+install the dependencies:
+
+```bash
+python -m venv venv
+venv\Scripts\activate          # on Windows
+pip install -r requirements.txt
+```
+
+Run a single process directly, pointing it at your broker:
+
+```bash
+set PYTHONPATH=.
+python services/compute_engine.py --broker localhost --port 1883
+```
+
+The logger needs the InfluxDB connection as well:
+
+```bash
+python services/mqtt_logger.py --broker localhost --port 1883 \
+    --url http://localhost:8181 --database biofizic
+```
+
+## Tests
+
+The unit tests cover the math and the message contracts. They run without a broker or
+a database:
+
+```bash
+pytest
+```
+
+They check artifact correction, the HRV metrics against a reference oracle, the robust
+baseline, the quality-weighted channel fusion, the Kalman smoothing, the CUSUM gate, and
+the arousal mapping.
+
+## MQTT topics
+
+From the watch to the server:
+
+| Topic | Rate | Content |
 |---|---|---|
-| `biofizic/` (root) | Central config + log format + bootstrap | [biofizic/ARCHITECTURE.md](biofizic/ARCHITECTURE.md) |
-| `biofizic/ingestion/` | Raw MQTT JSON → typed message objects | [ingestion](biofizic/ingestion/ARCHITECTURE.md) |
-| `biofizic/dsp/` | Clean the IBI series + PPG peaks | [dsp](biofizic/dsp/ARCHITECTURE.md) |
-| `biofizic/compute_features/` | IBI → HRV metrics over 30/60/90s | [compute_features](biofizic/compute_features/ARCHITECTURE.md) |
-| `biofizic/engine/` | Features → the verdict (PhysiologyDecision) | [engine](biofizic/engine/ARCHITECTURE.md) |
-| `biofizic/legacy/` | Parallel research engines (not production) | [legacy](biofizic/legacy/ARCHITECTURE.md) |
-| `services/` | MQTT compute service + InfluxDB logger | [services](services/ARCHITECTURE.md) |
-| `scripts/` | Generate dashboards + WESAD comparison | [scripts](scripts/ARCHITECTURE.md) |
-| `train/` | Train the WESAD RandomForest model | [train](train/ARCHITECTURE.md) |
+| `biofizic/acquisition/batch` | 1 Hz | IBI, accelerometer and gyroscope stats, skin temperature, a shared timestamp anchor, and sync diagnostics |
+| `biofizic/cmd/calibrate` | on demand | Recalibration request with the reported arousal |
 
-### Watch (`...\AndroidStudioProjects\biofizic\app\src\main\java\com\doltu\biofizic`)
-| Folder | Purpose | Doc |
+From the server to the watch and the dashboards:
+
+| Topic | Rate | Content |
 |---|---|---|
-| `signal/` | Validate/clean SDK beats into IBI window entries | `signal/ARCHITECTURE.md` |
-| `acquisition/` | Bundle the atomic 1 Hz acquisition batch | `acquisition/ARCHITECTURE.md` |
-| `presentation/` | Service lifecycle, MQTT, Compose UI | `presentation/ARCHITECTURE.md` |
+| `biofizic/state` | 30 s | The committed epoch verdict, retained, QoS 1 |
+| `biofizic/state/live` | 1 Hz | The live verdict for smooth display |
+| `biofizic/state/windows` | 30 s | HRV features over the 30, 60, and 90 second windows |
+| `biofizic/live` | 1 Hz | The aligned stream, every field on the shared timestamp anchor |
+| `biofizic/calibration/status` | on event | Calibration phase (collecting or done) |
+| `biofizic/legacy/{ppg,wesad,valence}` | varies | Research engines, never used for the production verdict |
 
----
+## Project layout
 
-## Parameter provenance (glossary)
+```
+affectus/            Python package with the processing pipeline
+  contract/          Shared message and field definitions
+  ingestion/         Raw MQTT JSON to typed messages
+  shared/dsp/        Inter-beat-interval cleaning and PPG peaks
+  shared/hrv/        HRV metric calculations
+  engine/            Features to verdict (quality, baseline, fusion, Kalman, gate)
+  devices/           Per-device sensor adapters (wrist, chest, head)
+  legacy/            Parallel research engines, off by default
+services/            The MQTT processes
+  compute_engine.py  Computes and publishes the verdict
+  mqtt_logger.py     Writes every topic to InfluxDB
+  state_api.py       Manual state publisher for VR testing
+  test_engine.py     Cardiac comparator
+scripts/             Dashboard generation and the WESAD comparison report
+train/               Trains the WESAD RandomForest model used by the legacy engine
+docker/              InfluxDB init script and Grafana provisioning
+tests/               Unit tests
+docker-compose.yml   The full stack
+Dockerfile           The Python image
+```
 
-Three origins, referenced as ① ② ③ throughout the per-folder docs:
+## Related documentation
 
-- **① Watch raw (sensors):** `hr`/`hr_sdk`, `ppg_green`/`ppg_ir`, `ibi_ms`, `skin_temp`.
-- **② Watch computed:** `acc_rms/p90/std`, `gyro_*`, `acc_band_cardiac`, `ts_anchor`, `seq`, `anchor_delay_ms`.
-- **③ Server computed:** `rmssd`, `sdnn`, `stress_index`, `mean_hr` (=60000/mean_IBI),
-  `z_si`, `z_hr`, `z_si_filtered`, `arousal_10`, `emotion`, `emotion_baseline`,
-  `motion_state`, `signal_quality`, `artifact_rate`, `confidence`, `dominant_channel`,
-  `kalman_gain`, `labels_agree`.
-- **③b Server legacy/ML:** `p_stress` (WESAD), `valence`, `ppa`, `n_peaks`, `ibi_recon_mean`.
-
-`hr_sdk` (①, raw on watch) vs `mean_hr` (③, derived from beats on server) — comparing
-them validates beat integrity.
+- `ARHITECTURA.md` for the architecture in more detail.
+- `docs/` for the narrative explanation and the session reports.
+- The Android watch app has its own README in its repository.

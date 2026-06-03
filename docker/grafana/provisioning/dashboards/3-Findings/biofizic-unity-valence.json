@@ -1,0 +1,152 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "description": "Valenta de REFERINTA a scenei (ce PROPUNE scena, nu ce simte userul). Calculata din lumina + culoare + miscare, regula transparenta pe server.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "max": 1,
+          "min": -1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": -1 },
+              { "color": "yellow", "value": -0.15 },
+              { "color": "green", "value": 0.15 }
+            ]
+          },
+          "unit": "none",
+          "decimals": 2
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "rawSql": "SELECT time, GREATEST(-1, LEAST(1, (light - 0.5) * 1.2 + ((g + b) / 2.0 - r) * 0.8 - motion * 0.5)) AS \"Valenta scena\" FROM biofizic_context WHERE $__timeFilter(time) AND light IS NOT NULL ORDER BY time",
+          "format": "table"
+        }
+      ],
+      "title": "Valenta scenei (referinta)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "description": "Valenta de referinta a scenei in timp. >0 = scena propune placut (luminos, rece, calm), <0 = neplacut (intunecat, rosu, agitat).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2, "gradientMode": "scheme" },
+          "max": 1,
+          "min": -1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": -1 },
+              { "color": "yellow", "value": -0.15 },
+              { "color": "green", "value": 0.15 }
+            ]
+          },
+          "unit": "none"
+        }
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 0 },
+      "id": 2,
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "rawSql": "SELECT time, GREATEST(-1, LEAST(1, (light - 0.5) * 1.2 + ((g + b) / 2.0 - r) * 0.8 - motion * 0.5)) AS \"valenta\" FROM biofizic_context WHERE $__timeFilter(time) AND light IS NOT NULL ORDER BY time",
+          "format": "time_series"
+        }
+      ],
+      "title": "Valenta scenei in timp",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "description": "Cele 3 ingrediente din care se deduce valenta scenei: luminozitate (0..1), tonul de culoare (rece-cald), si miscarea (haos vizual).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 },
+          "min": 0,
+          "max": 1
+        }
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 8 },
+      "id": 3,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "rawSql": "SELECT time, light AS \"Luminozitate\", (g + b) / 2.0 AS \"Ton rece (calm)\", r AS \"Ton cald (alerta)\", motion AS \"Miscare (haos)\" FROM biofizic_context WHERE $__timeFilter(time) AND light IS NOT NULL ORDER BY time",
+          "format": "time_series"
+        }
+      ],
+      "title": "Ingredientele scenei (lumina, culoare, miscare)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "description": "Scena curenta raportata de Unity.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" } } },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["count"], "fields": "", "values": false },
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "rawSql": "SELECT COUNT(*) AS \"Mesaje context (ultima ora)\" FROM biofizic_context WHERE time > now() - INTERVAL '1 hour'",
+          "format": "table"
+        }
+      ],
+      "title": "Context primit de la Unity",
+      "type": "stat"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "tags": ["biofizic", "unity", "vr", "valence"],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Unity Valence",
+  "uid": "biofizic-unity-valence",
+  "version": 1,
+  "weekStart": ""
+}
