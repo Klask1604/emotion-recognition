@@ -1,0 +1,141 @@
+{
+  "uid": "biofizic-stare-3clase",
+  "title": "Finding - Cadran Russell (arousal + valenta) + emotii tipice",
+  "tags": ["biofizic", "stare", "emotie", "cadran", "russell"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "READ ME",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "## Cadran Russell live — localizare în spațiul afectiv\n\n**Axa Y = AROUSAL** (0-10, din HRV+baseline personal validat). **Axa X = VALENȚĂ** (din morfologia PPG, fiabilă DOAR la activare). Verdictul = **cadranul** (zona), nu emoția exactă — afișăm 3 emoții tipice ca sugestie. `valence_reliable=false` la arousal jos/mediu (valența netestată pe repaus). Calibrare ~3 min la prima pornire, apoi baseline-ul persistă."
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "CADRAN acum",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code", "format": "time_series", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT time, state FROM biofizic_state_emotie WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 1"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^state$/" }, "textMode": "value", "colorMode": "background" }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "AROUSAL acum (0-10)",
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 4 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code", "format": "time_series", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT time, arousal_y FROM biofizic_state_emotie WHERE arousal_y IS NOT NULL AND $__timeFilter(time) ORDER BY time DESC LIMIT 1"
+        }
+      ],
+      "fieldConfig": { "defaults": { "min": 0, "max": 10, "thresholds": { "steps": [
+        { "color": "blue", "value": null }, { "color": "green", "value": 4 }, { "color": "red", "value": 7 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "textMode": "value", "colorMode": "background" }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "VALENTA acum (-1 neg / +1 poz)",
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 4 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code", "format": "time_series", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT time, valence_x FROM biofizic_state_emotie WHERE valence_x IS NOT NULL AND $__timeFilter(time) ORDER BY time DESC LIMIT 1"
+        }
+      ],
+      "fieldConfig": { "defaults": { "min": -1, "max": 1, "thresholds": { "steps": [
+        { "color": "red", "value": null }, { "color": "yellow", "value": -0.12 }, { "color": "green", "value": 0.12 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "textMode": "value", "colorMode": "background" }
+    },
+    {
+      "id": 5,
+      "type": "xychart",
+      "title": "CADRAN RUSSELL - punctul tau (X=valenta, Y=arousal). Sus-dr=entuziasm, sus-stg=stres, jos=calm",
+      "gridPos": { "h": 13, "w": 12, "x": 0, "y": 11 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code", "format": "table", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT valence_x AS valenta, arousal_y AS arousal FROM biofizic_state_emotie WHERE valence_x IS NOT NULL AND arousal_y IS NOT NULL AND $__timeFilter(time)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "show": "points", "pointSize": { "fixed": 6 } } }, "overrides": [
+        { "matcher": { "id": "byName", "options": "valenta" }, "properties": [ { "id": "min", "value": -1 }, { "id": "max", "value": 1 } ] },
+        { "matcher": { "id": "byName", "options": "arousal" }, "properties": [ { "id": "min", "value": 0 }, { "id": "max", "value": 10 } ] }
+      ] },
+      "options": { "seriesMapping": "auto", "tooltip": { "mode": "single" }, "legend": { "showLegend": false } }
+    },
+    {
+      "id": 6,
+      "type": "state-timeline",
+      "title": "CADRAN in timp",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 11 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code", "format": "time_series", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT time, state FROM biofizic_state_emotie WHERE state IS NOT NULL AND $__timeFilter(time) ORDER BY time"
+        }
+      ],
+      "options": { "mergeValues": true, "showValue": "auto" }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "AROUSAL (Y) + VALENTA (X) in timp",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 18 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code", "format": "time_series", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT time, arousal_y, valence_x FROM biofizic_state_emotie WHERE arousal_y IS NOT NULL AND $__timeFilter(time) ORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Probabilitati morfologie (valenta): disconfort vs placut",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "biofizic-influx" },
+          "editorMode": "code", "format": "time_series", "queryType": "sql", "rawQuery": true,
+          "rawSql": "SELECT time, p_calm, p_disconfort, p_placut, morpho_conf FROM biofizic_state_emotie WHERE $__timeFilter(time) ORDER BY time"
+        }
+      ],
+      "fieldConfig": { "defaults": { "min": 0, "max": 1 } }
+    }
+  ]
+}

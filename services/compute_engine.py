@@ -34,6 +34,7 @@ from affectus.config import (
     LIVE_AROUSAL_HYSTERESIS_TICKS,
     PRIMARY_DECISION_WINDOW_SECONDS,
     SKEW_BACKLOG_WARN_SEC,
+    VALENCE_INTENSITY_GATE_Z,
     WINDOWS_PUBLISH_INTERVAL_SECONDS,
 )
 from affectus.dsp.arousal_mapper import arousal_scale_10_to_label
@@ -176,6 +177,23 @@ class ComputeEngineService:
         # dashboard stabilisers (wesad/eevr/case) now live inside each ValenceTrack
         # in ResearchEngines, so there is no parallel dict to keep in sync here.
         self._valence_stabilizer = ValenceVerdictStabilizer()
+        # 3-state emotion classifier (NEUTRU/STRES/RELAXARE), research/viz only —
+        # NOT in the production arousal verdict. Trained on WESAD (5 HRV + 2 motion +
+        # personal deviation); accumulates its own rest baseline live. Published on
+        # biofizic/state/emotie for Grafana.
+        try:
+            from affectus.research.stari.state_classifier import StateClassifier
+            self._state_clf = StateClassifier()
+        except Exception:
+            self._state_clf = None
+        # Morphology classifier (axa 2 = valenta din forma undei PPG). Consuma PPG
+        # 100Hz on-demand, downsample la 64Hz, separa DISCONFORT vs PLACUT (86%) unde
+        # HRV cade la 52%. Research/viz, NU in verdictul de productie.
+        try:
+            from affectus.research.stari.morpho_classifier import MorphoClassifier
+            self._morpho_clf = MorphoClassifier()
+        except Exception:
+            self._morpho_clf = None
         # Rolling ECG calibration buffer (raw 500 Hz samples + timestamps + lead).
         # Filled by the biofizic/ecg/calibrate handler during a finger-hold,
         # cleared on every cmd/calibrate so each calibration starts clean.
@@ -355,6 +373,9 @@ class ComputeEngineService:
                 if samples:
                     for c in consumers:
                         c.ingest_ondemand_ppg(samples)
+                    # Morphology classifier also eats the 100Hz waveform (axa 2).
+                    if self._morpho_clf is not None and self._morpho_clf.ready:
+                        self._morpho_clf.ingest_ondemand_ppg(samples)
             return
 
         if topic == "biofizic/ecg/calibrate":
@@ -496,6 +517,7 @@ class ComputeEngineService:
 
         if publish_epoch and result.decision:
             self._publish_state(client, result.decision, result=result)
+            self._publish_emotion_state(client, result, batch)
 
         # Calibration progress: announce "done" the moment the baseline re-locks
         # after a recalibrate, so the watch stops the spinner.
@@ -643,12 +665,33 @@ class ComputeEngineService:
                     use_context = (
                         ctx is not None and (time.time() - ctx["ts"]) < 10.0
                     )
-                    valence_for_verdict = ctx["valence_prior"] if use_context else smoothed
-                    conf_for_verdict = 1.0 if use_context else self._last_valence_confidence
-                    deadband_for_verdict = (
-                        0.15 if use_context else out.valence_wesad["valence_deadband"]
-                    )
-                    self._valence_source = "context" if use_context else "ppg"
+                    # Intensity gate (empirically grounded): PPG valence is only
+                    # reliable (~87% LOSO on WESAD) when the autonomic reaction is
+                    # STRONG. On mild stimuli (small |arousal_z|) place/dislike
+                    # collapses to chance (~51% across CASE/EMOGNITION/DEAP), so we
+                    # must not assert a valence sign there. Below the threshold the
+                    # PPG valence is suppressed (treated as "undetermined") and only
+                    # arousal is reported. The VR scene context is exempt — it is an
+                    # honest external prior, not the weak PPG signal.
+                    ppg_intensity_ok = abs(arousal_z) >= VALENCE_INTENSITY_GATE_Z
+                    if use_context:
+                        valence_for_verdict = ctx["valence_prior"]
+                        conf_for_verdict = 1.0
+                        deadband_for_verdict = 0.15
+                        self._valence_source = "context"
+                    elif ppg_intensity_ok:
+                        valence_for_verdict = smoothed
+                        conf_for_verdict = self._last_valence_confidence
+                        deadband_for_verdict = out.valence_wesad["valence_deadband"]
+                        self._valence_source = "ppg"
+                    else:
+                        # Reaction too mild for trustworthy valence -> undetermined.
+                        # valence_for_verdict=0 keeps the verdict on the arousal axis
+                        # only (neutral valence), source flags the gate for the board.
+                        valence_for_verdict = 0.0
+                        conf_for_verdict = 0.0
+                        deadband_for_verdict = out.valence_wesad["valence_deadband"]
+                        self._valence_source = "undetermined_low_intensity"
                     self._last_emotion_verdict = self._valence_stabilizer.update(
                         arousal_z, valence_for_verdict, conf_for_verdict,
                         deadband_for_verdict, vbase.is_ready or use_context,
@@ -974,6 +1017,101 @@ class ComputeEngineService:
         """
         payload = self._decision_payload(decision, live=False, result=result)
         client.publish("biofizic/state", json.dumps(payload), qos=1, retain=True)
+
+    def _publish_emotion_state(self, client, result: MultiWindowResult, batch) -> None:
+        """3-state emotion verdict (CALM/DISCONFORT/PLACUT) on biofizic/state/emotie.
+        Research/viz only, NOT the production arousal verdict. Adapts to the user via a
+        personal rest baseline: feeds calm windows, classifies once the baseline locks
+        (~12 rest windows). Returns nothing until then (no premature verdict)."""
+        if self._state_clf is None or not self._state_clf.ready:
+            return
+        decision = result.decision
+        if decision is None:
+            return
+        window = result.best  # WindowResult care a decis (w60 normal, w30 la start)
+        if window is None:
+            return
+        # Feed the personal baseline from stable, clean windows: still + decent
+        # signal quality. NOT gated on `alert` — the CUSUM alert tracks arousal
+        # CHANGE, not whether the user is at rest, and it stays on for tired/active
+        # users, which would starve the baseline forever (it never locks).
+        is_rest = (decision.motion_state == "still"
+                   and decision.signal_quality >= 0.5)
+        if is_rest:
+            self._state_clf.observe_rest(window, batch)
+            if self._morpho_clf is not None and self._morpho_clf.ready:
+                self._morpho_clf.observe_rest()
+        out = self._state_clf.predict(window, batch)
+        morpho = self._morpho_clf.predict() if (self._morpho_clf is not None
+                                                and self._morpho_clf.ready) else None
+        if out is None:
+            # Baseline not locked yet — tell the dashboard we're still calibrating.
+            payload = {"ts": self._anchor_ms, "state": "CALIBRARE",
+                       "confidence": 0.0, "p_calm": 0.0, "p_disconfort": 0.0,
+                       "p_placut": 0.0, "baseline_ready": False, "calibrating": True}
+        else:
+            probs = out["probs"]
+            arousal = int(decision.display_arousal_10)
+            # Valenta (X) din morfologie cand e gata (separa disc/plac la 86%), altfel HRV.
+            # Daca morfologia voteaza CALM, valenta NU are directie clara -> 0 (centru),
+            # ca CALM-ul sa nu produca un semn fals de valenta. Doar cand morfologia
+            # inclina spre disconfort SAU placut, valence_x reflecta directia (normalizat).
+            mp = morpho["probs"] if morpho else probs
+            morpho_says_calm = morpho is not None and morpho["state"] == "CALM"
+            if morpho_says_calm:
+                valence_x = 0.0
+            else:
+                p_disc = float(mp.get("DISCONFORT", 0.0))
+                p_plac = float(mp.get("PLACUT", 0.0))
+                denom = p_disc + p_plac
+                valence_x = (p_plac - p_disc) / denom if denom > 1e-6 else 0.0
+            quadrant, emotions, source, final_conf, valence_reliable = self._russell_quadrant(
+                arousal, valence_x, morpho)
+            final_state = quadrant
+            payload = {"ts": self._anchor_ms, "state": final_state,
+                       "emotions": emotions, "confidence": final_conf, "source": source,
+                       "valence_x": round(valence_x, 3),
+                       "arousal_y": float(decision.display_arousal_10),
+                       "valence_reliable": valence_reliable,
+                       "p_calm": probs.get("CALM", 0.0),
+                       "p_disconfort": probs.get("DISCONFORT", 0.0),
+                       "p_placut": probs.get("PLACUT", 0.0),
+                       "morpho_state": morpho["state"] if morpho else None,
+                       "morpho_conf": morpho["confidence"] if morpho else 0.0,
+                       "baseline_ready": True, "calibrating": False}
+        client.publish("biofizic/state/emotie", json.dumps(payload), qos=0)
+
+    @staticmethod
+    def _russell_quadrant(arousal: int, valence_x: float, morpho) -> tuple:
+        """Mapeaza arousal(0-10) x valenta(-1..+1) -> cadran Russell + 3 emotii tipice.
+        Onest: NU pretinde emotia exacta, da ZONA + emotiile care apar tipic acolo.
+
+        Fiabilitate valenta: morfologia separa valenta DOAR la activare (testat 86% pe
+        stres-vs-amuse, ambele activate). La arousal jos NU e validata -> marcam incert,
+        nu fortam trist-vs-relaxat. Sus + valenta = solid; jos = doar 'arousal jos'."""
+        VAL_NEUTRAL = 0.12   # |valence| sub asta = neutru pe valenta
+        AROUSAL_LO, AROUSAL_HI = 4, 6  # <4 jos, >6 sus, intre = mijloc
+        # valenta e fiabila doar daca morfologia e gata SI arousalul e mare
+        valence_reliable = (morpho is not None and arousal > AROUSAL_HI)
+        conf = round(float(morpho["confidence"]) if (morpho and valence_reliable)
+                     else 0.5, 2)
+
+        if arousal > AROUSAL_HI:  # SUS (activat) - valenta conteaza si e fiabila
+            if valence_x >= VAL_NEUTRAL:
+                return ("Activare pozitiva", ["Entuziasm", "Bucurie", "Excitare"],
+                        "morfologie", conf, valence_reliable)
+            if valence_x <= -VAL_NEUTRAL:
+                return ("Activare negativa", ["Stres", "Furie", "Anxietate"],
+                        "morfologie", conf, valence_reliable)
+            return ("Activat", ["Alert", "Tensionat", "Stimulat"],
+                    "arousal", conf, valence_reliable)
+        if arousal < AROUSAL_LO:  # JOS (relaxat/obosit) - valenta INCERTA, nu fortam
+            return ("Calm/dezactivat",
+                    ["Relaxare", "Odihna", "Plictiseala"],
+                    "arousal", round(1.0 - arousal / AROUSAL_LO, 2), False)
+        # MIJLOC (la baseline)
+        return ("Neutru", ["Concentrat", "Atent", "Echilibrat"],
+                "arousal", 0.6, False)
 
     def _publish_calibration(self, client, message: str, *, phase: str = "done") -> None:
         payload = {

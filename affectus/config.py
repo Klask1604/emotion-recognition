@@ -260,6 +260,17 @@ TEMP_CHANNEL_MAX_WEIGHT = 0.25
 # signal: it informs the positive/negative axis, not the intensity axis.
 VALENCE_WESAD_MAX_WEIGHT = 0.0
 
+# Intensity gate for the 2D verdict's valence axis. PPG valence (place/dislike)
+# is only trustworthy (~87% balanced LOSO on WESAD's real induced stress) when the
+# autonomic reaction is strong; on mild stimuli it collapses to chance (~51% on
+# CASE/EMOGNITION/DEAP video clips), because place vs dislike produce near-identical
+# cardiac signatures when arousal barely moves (HR delta ~0). So the verdict only
+# asserts a valence sign when |arousal_z| clears this threshold; below it the axis
+# is reported as "undetermined" rather than guessed. Tuned conservatively at ~1
+# standard score (a clearly above-baseline reaction). The VR scene context bypasses
+# this gate (it is an external prior, not the weak PPG signal).
+VALENCE_INTENSITY_GATE_Z = 1.0
+
 
 # ---------------------------------------------------------------------------
 # Respiration estimators (RESEARCH — engine/channels/respiration_*; not fused yet)

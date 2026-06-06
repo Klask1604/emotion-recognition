@@ -25,6 +25,10 @@ def _fresh_service() -> ComputeEngineService:
     svc._live_displayed_a10 = None
     svc._live_candidate_a10 = None
     svc._live_candidate_streak = 0
+    # _decision_payload reads the latest VR context to attach the 2D verdict.
+    # __new__ skips __init__, so set it here (no context in these unit tests).
+    svc._last_context = None
+    svc._last_emotion_verdict = ("Neutru", 0)
     return svc
 
 

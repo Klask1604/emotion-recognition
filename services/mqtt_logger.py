@@ -117,6 +117,12 @@ TAG_FIELDS["biofizic/live"] = ["motion_state", "dominant_channel", "decision_fid
 BOOL_FIELDS["biofizic/live"] = ["alert", "baseline_ready"]
 BOOL_FIELDS["biofizic/legacy/polarity"] = ["arousal_gated"]
 
+# 3-state emotion verdict (CALM/DISCONFORT/PLACUT) — research/viz, biofizic/state/emotie.
+# Probabilitatile sunt flat (p_calm/p_disconfort/p_placut) ca logger-ul sa le scrie direct.
+FLOAT_FIELDS["biofizic/state/emotie"] = ["confidence", "p_calm", "p_disconfort", "p_placut", "morpho_conf", "valence_x", "arousal_y"]
+TAG_FIELDS["biofizic/state/emotie"] = ["state", "source", "morpho_state"]
+BOOL_FIELDS["biofizic/state/emotie"] = ["baseline_ready", "calibrating", "valence_reliable"]
+
 # Parallel research/legacy engines (never feed VR; for comparison dashboards).
 FLOAT_FIELDS.update({
     "biofizic/legacy/wesad": ["p_stress"],
