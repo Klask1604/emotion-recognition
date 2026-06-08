@@ -67,7 +67,7 @@ def _decide_with(
     if z_filtered_seed != 0.0:
         s.estimator_x = z_filtered_seed
     primary = _metrics(si=si)
-    multi = MultiWindowHrvResult(None, primary, None, None)
+    multi = MultiWindowHrvResult(primary, None, None)
     sensor = AcquisitionBatchMessage(timestamp_publish_ms=0, timestamp_anchor_ms=0, sequence=0, heart_rate_bpm=70.0)
     return decide(
         primary=primary,
@@ -95,7 +95,7 @@ def test_post_baseline_uses_filtered_z(tmp_path: Path):
     state = DecisionState(estimator_x=3.0)
     baseline = _ready_baseline(tmp_path)
     primary = _metrics(si=10.0)
-    multi = MultiWindowHrvResult(None, primary, None, None)
+    multi = MultiWindowHrvResult(primary, None, None)
     sensor = AcquisitionBatchMessage(timestamp_publish_ms=0, timestamp_anchor_ms=0, sequence=0, heart_rate_bpm=70.0)
     d = decide(
         primary=primary,

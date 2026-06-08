@@ -36,7 +36,6 @@ class HrvMetrics:
 class MultiWindowHrvResult:
     """Parallel HRV metrics for 30/60/90 second windows."""
 
-    window_15_seconds: HrvMetrics | None
     window_30_seconds: HrvMetrics | None
     window_60_seconds: HrvMetrics | None
     window_90_seconds: HrvMetrics | None

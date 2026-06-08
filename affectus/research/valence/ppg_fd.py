@@ -1,5 +1,5 @@
 """
-PPG frequency-domain features for valence — replication of the method in
+PPG frequency-domain features for valence, replication of the method in
 Frontiers Physiol. 2025 ("An emotion recognition method based on frequency-
 domain features of PPG", PMC11893849), adapted to a Galaxy Watch consumer PPG
 stream (~25 Hz vs the paper's 125 Hz).
@@ -23,7 +23,7 @@ is the honest replacement for the ad-hoc RMSSD/PPA valence heuristic.
 
 NOTE ON HARDWARE: at ~25 Hz the Nyquist is 12.5 Hz; the third harmonic of a
 typical HR (3*1.45 = 4.4 Hz) is well within range, so all three bands are
-resolvable — but the spectral resolution is coarser than the paper's 125 Hz.
+resolvable, but the spectral resolution is coarser than the paper's 125 Hz.
 This is a documented consumer-hardware adaptation, not the original method.
 """
 

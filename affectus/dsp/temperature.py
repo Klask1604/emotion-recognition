@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 import logging
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from affectus.config import (
@@ -207,7 +207,7 @@ def evaluate_skin_temperature(
 
     The returned (z, confidence) plug directly into the fusion as a channel with
     weight = confidence, so a cold-start / drifting / missing-sample epoch
-    contributes nothing (weight 0) — the same no-op guarantee the fusion relies
+    contributes nothing (weight 0), the same no-op guarantee the fusion relies
     on for unwired channels."""
     baseline_skin = state.baseline_skin_c or 0.0
     if not state.is_ready or skin_temp_c <= 0:

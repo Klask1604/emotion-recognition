@@ -3,6 +3,8 @@ venv/
 .venv/
 __pycache__/
 *.py[cod]
+.coverage
+.pytest_cache/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
@@ -57,3 +59,6 @@ data/*.npz
 train/figs/
 
 docs/
+
+# model artifacts (binary, regenerated; engine reads them locally)
+models/*.npz

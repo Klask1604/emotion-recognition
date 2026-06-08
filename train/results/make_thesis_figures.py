@@ -158,8 +158,8 @@ def fig_split_inflation():
                 f"{b.get_height():.0f}", ha="center", fontsize=10)
     ax.set_ylabel("Acuratete echilibrata (%)"); ax.set_ylim(0, 100)
     ax.set_xticks(x); ax.set_xticklabels(sets)
-    ax.set_title("Cat umfla split-ul aleatoriu acuratetea de valenta\n"
-                 "(acelasi LogReg, aceleasi date — difera doar protocolul)")
+    ax.set_title("Inflatia introdusa de impartirea aleatorie a datelor\n"
+                 "(acelasi LogReg, aceleasi date, difera doar protocolul)")
     ax.legend(loc="upper right", fontsize=9)
     fig.tight_layout(); fig.savefig(OUT / "split_inflation.png", dpi=150)
     plt.close(fig)
@@ -189,10 +189,10 @@ def fig_graded_valence():
                 ha="center", fontsize=11, fontweight="bold")
         ax.text(bar.get_x() + bar.get_width() / 2, 4, notes[n], ha="center",
                 fontsize=8, color="white", rotation=90, va="bottom")
-    ax.set_ylabel("Valenta — acuratete echilibrata (LOSO) %"); ax.set_ylim(0, 100)
+    ax.set_ylabel("Valenta: acuratete echilibrata (LOSO) %"); ax.set_ylim(0, 100)
     ax.set_xticks(x); ax.set_xticklabels(sets)
-    ax.set_title("Detectabilitatea valentei creste cu intensitatea afectiva\n"
-                 "(acelasi pipeline, acelasi LOSO — difera doar stimulul)")
+    ax.set_title("Detectabilitatea valentei creste cu intensitatea stimulului\n"
+                 "(acelasi pipeline, acelasi LOSO, difera doar stimulul)")
     fig.tight_layout(); fig.savefig(OUT / "graded_valence.png", dpi=150)
     plt.close(fig)
 
@@ -210,7 +210,7 @@ def fig_personal_vs_loso():
     x = np.arange(len(sets)); w = 0.38
     fig, ax = plt.subplots(figsize=(9, 5.5))
     b1 = ax.bar(x - w / 2, loso, w, color="#95a5a6",
-                label="Model GENERAL (LOSO — testat pe strain)")
+                label="Model general (LOSO, testat pe subiect strain)")
     b2 = ax.bar(x + w / 2, pers, w, color="#27ae60",
                 label="Model PERSONAL (calibrat pe utilizator)")
     ax.axhline(50, ls="--", c="#c0392b", lw=1)
@@ -219,10 +219,10 @@ def fig_personal_vs_loso():
         ax.text(b.get_x() + b.get_width() / 2, b.get_height() + 1,
                 f"{b.get_height():.0f}", ha="center", fontsize=10,
                 fontweight="bold")
-    ax.set_ylabel("Valenta — acuratete echilibrata %"); ax.set_ylim(0, 100)
+    ax.set_ylabel("Valenta: acuratete echilibrata %"); ax.set_ylim(0, 100)
     ax.set_xticks(x); ax.set_xticklabels(sets)
-    ax.set_title("Valenta din PPG: slaba pe STRAINI, recuperata PERSONAL\n"
-                 "(acelasi LogReg — difera doar daca s-a calibrat pe utilizator)")
+    ax.set_title("Valenta din PPG: slaba intre subiecti, recuperata prin personalizare\n"
+                 "(acelasi LogReg, difera doar daca s-a calibrat pe utilizator)")
     ax.legend(loc="upper right", fontsize=9)
     fig.tight_layout(); fig.savefig(OUT / "personal_vs_loso.png", dpi=150)
     plt.close(fig)
@@ -262,7 +262,7 @@ def fig_wesad_confusion():
     ax.set_xticklabels(labels); ax.set_yticklabels(labels)
     ax.set_xlabel("Prezis"); ax.set_ylabel("Real")
     ax.set_title(f"Confuzie valenta WESAD (LOSO, echilibrat {bal:.0f}%)\n"
-                 "succesul vine din diferenta de activare dintre conditii")
+                 "separarea provine din diferenta de activare dintre conditii")
     ax.grid(False)
     fig.colorbar(im, fraction=0.046, pad=0.04, label="% pe rand")
     fig.tight_layout(); fig.savefig(OUT / "wesad_confusion.png", dpi=150)
@@ -299,56 +299,12 @@ def fig_wesad_feature_attrib():
     ax.invert_yaxis()
     ax.axvline(0, c="black", lw=0.8)
     ax.set_xlabel("Cohen's d  (+ = mai mare la amuzament, − = mai mare la stres)")
-    ax.set_title("Ce separa de fapt clasele de valenta pe WESAD\n"
-                 "domina latimea pulsului si HR medie — trasaturi de ACTIVARE")
+    ax.set_title("Trasaturile care separa clasele de valenta pe WESAD\n"
+                 "domina latimea pulsului si HR medie, trasaturi de activare")
     fig.tight_layout(); fig.savefig(OUT / "wesad_feature_attrib.png", dpi=150)
     plt.close(fig)
 
 
-# ============================================ FIG 6: polarity 3-class confusion
-def fig_polarity_confusion():
-    """Detector 3 clase negativ/neutru/pozitiv pe BVP de incheietura (WESAD,
-    cele 3 conditii afective). LOSO, LogReg."""
-    from sklearn.model_selection import LeaveOneGroupOut
-    from sklearn.pipeline import make_pipeline
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.metrics import confusion_matrix
-    from sklearn.base import clone
-    d = np.load(ROOT / "data" / "states_wesad.npz", allow_pickle=True)
-    X, lab, s = d["X"], d["y"], d["subjects"]
-    # WESAD labels: 1 baseline(neutru), 2 stress(negativ), 3 amusement(pozitiv)
-    keep = np.isin(lab, [1, 2, 3])
-    X, lab, s = X[keep], lab[keep], s[keep]
-    y = np.select([lab == 2, lab == 1, lab == 3], [0, 1, 2])  # neg/neu/poz
-    rows = np.all(np.isfinite(X), axis=1); X, y, s = X[rows], y[rows], s[rows]
-    yt, yp = [], []
-    for tr, te in LeaveOneGroupOut().split(X, y, s):
-        if len(np.unique(y[tr])) < 2:
-            continue
-        m = make_pipeline(StandardScaler(), clone(_model())); m.fit(X[tr], y[tr])
-        yt.extend(y[te]); yp.extend(m.predict(X[te]))
-    yt, yp = np.array(yt), np.array(yp)
-    cm = confusion_matrix(yt, yp, labels=[0, 1, 2]).astype(float)
-    cmn = cm / np.maximum(cm.sum(1, keepdims=True), 1) * 100
-    NUM["pol_neg"] = cmn[0, 0]; NUM["pol_neu"] = cmn[1, 1]; NUM["pol_pos"] = cmn[2, 2]
-    NUM["pol_neg_pos_conf"] = cmn[0, 2]; NUM["pol_pos_neg_conf"] = cmn[2, 0]
-
-    labels = ["negativ", "neutru", "pozitiv"]
-    fig, ax = plt.subplots(figsize=(5.8, 5.2))
-    im = ax.imshow(cmn, cmap="Purples", vmin=0, vmax=100)
-    for i in range(3):
-        for j in range(3):
-            ax.text(j, i, f"{cmn[i,j]:.0f}%", ha="center", va="center",
-                    fontsize=12, color="white" if cmn[i, j] > 55 else "black")
-    ax.set_xticks(range(3)); ax.set_yticks(range(3))
-    ax.set_xticklabels(labels); ax.set_yticklabels(labels)
-    ax.set_xlabel("Prezis"); ax.set_ylabel("Real")
-    ax.set_title("Detector de polaritate (3 clase, LOSO, BVP incheietura)\n"
-                 "prinde negativul, rateaza pozitivul; confuzia poli opusi mica")
-    ax.grid(False)
-    fig.colorbar(im, fraction=0.046, pad=0.04, label="% pe rand")
-    fig.tight_layout(); fig.savefig(OUT / "polarity_confusion.png", dpi=150)
-    plt.close(fig)
 
 
 # =============================================== FIG 7: arousal WESAD conditions
@@ -406,8 +362,8 @@ def fig_arousal_wesad():
                 ha="center", fontsize=10)
     ax.set_xticks(x)
     ax.set_xticklabels([f"{COND[c]}\n(rang {RANK[c]})" for c in ordered])
-    ax.set_ylabel("Indice de stres (Baevsky) — mediu pe fereastra de 30 s")
-    ax.set_title("Indicele nostru de stres creste cu activarea conditiei (WESAD)\n"
+    ax.set_ylabel("Indice de stres (Baevsky), mediu pe fereastra de 30 s")
+    ax.set_title("Indicele de stres creste cu activarea conditiei (WESAD)\n"
                  f"Spearman rho (rang activare vs indice) = {rho:+.2f}")
     fig.tight_layout(); fig.savefig(OUT / "arousal_wesad.png", dpi=150)
     plt.close(fig)
@@ -426,7 +382,7 @@ def fig_respiration():
     WIN = 60                        # respiratia are nevoie de ~zeci de secunde
 
     def true_resp_rate(seg):
-        """Rata de respiratie din banda toracica via spectru Welch (0.1–0.5 Hz)."""
+        """Rata de respiratie din banda toracica via spectru Welch (0.1-0.5 Hz)."""
         f, p = welch(seg - seg.mean(), fs=FS_RESP, nperseg=min(len(seg), 4096))
         band = (f >= 0.1) & (f <= 0.5)
         if not band.any():
@@ -508,7 +464,7 @@ def fig_respiration():
     lim = [5, 30]
     ax.plot(lim, lim, "k--", lw=1, label="acord perfect")
     ax.set_xlim(lim); ax.set_ylim(lim)
-    ax.set_xlabel("Respiratie reala — banda toracica (br/min)")
+    ax.set_xlabel("Respiratie reala, banda toracica (br/min)")
     ax.set_ylabel("Respiratie estimata din incheietura (br/min)")
     ax.set_title("Estimare vs adevar (WESAD, ferestre de 60 s)\n"
                  "norii verticali = estimarea nu urmeaza adevarul")
@@ -528,7 +484,7 @@ def fig_respiration():
                 ha="center", va="bottom", fontsize=8.5)
     ax.set_ylim(0, max(maes) + 2.2)
     ax.set_ylabel("Eroare absoluta medie fata de banda toracica (br/min)")
-    ax.set_title(f"Cat de departe e fiecare sursa", pad=14)
+    ax.set_title(f"Eroarea fiecarei surse fata de banda toracica", pad=14)
     ax.text(0.5, -0.16, f"din {len(pts)} ferestre cu adevar valid",
             transform=ax.transAxes, ha="center", fontsize=9, color="gray")
     fig.tight_layout(); fig.savefig(OUT / "respiration_compare.png", dpi=150)
@@ -539,7 +495,7 @@ def main():
     print("Generez figurile de rezultate in:", OUT)
     for fn in (fig_split_inflation, fig_graded_valence, fig_personal_vs_loso,
                fig_wesad_confusion, fig_wesad_feature_attrib,
-               fig_polarity_confusion, fig_arousal_wesad, fig_respiration):
+               fig_arousal_wesad, fig_respiration):
         print(f"  -> {fn.__name__} ...", flush=True)
         fn()
     print("\n==== CIFRELE REALE (pentru .tex) ====")

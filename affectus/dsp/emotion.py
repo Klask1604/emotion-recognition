@@ -4,7 +4,7 @@ Emotion verdict from the Russell circumplex (1980): a quadrant of AROUSAL × VAL
 Both inputs are PERSONAL z-scores centred on the subject's own resting baseline
 (0 = neutral), so the verdict is subject-relative. The neutral dead-band around 0
 on the valence axis keeps a near-zero (or pre-calibration) valence from being
-forced into a quadrant — honest about the weak valence signal at low affect
+forced into a quadrant, honest about the weak valence signal at low affect
 intensity.
 
 This is the single source of truth for the verdict: the compute service publishes
@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from collections import deque
 
-# (label, code) — Romanian single words, consistent with arousal_scale_10_to_label.
+# (label, code), Romanian single words, consistent with arousal_scale_10_to_label.
 NEUTRAL = ("Neutru", 0)
 CALM = ("Calm", 1)        # low arousal, positive valence (calm/relaxed)
 SAD = ("Trist", 2)        # low arousal, negative valence (sad/bored)
@@ -56,13 +56,13 @@ class ValenceVerdictStabilizer:
     avoids this with Kalman smoothing + a quality gate + display hysteresis; this
     applies the same three guards to valence:
 
-      1. CONFIDENCE GATE — the WESAD model's margin |2p-1| (~0.5 = chance). When
+      1. CONFIDENCE GATE, the WESAD model's margin |2p-1| (~0.5 = chance). When
          it is below CONF_MIN the epoch is too uncertain to assert a sign, so the
          valence used for the verdict is pulled toward 0 (neutral), exactly like a
          low-quality arousal epoch barely moving the Kalman estimate.
-      2. MEDIAN SMOOTHING — a rolling median over the last N epochs resists the
+      2. MEDIAN SMOOTHING, a rolling median over the last N epochs resists the
          occasional spike better than a mean (one outlier can't drag it).
-      3. VERDICT HYSTERESIS — the displayed quadrant only changes after a
+      3. VERDICT HYSTERESIS, the displayed quadrant only changes after a
          different one persists for HYSTERESIS_TICKS consecutive epochs, mirroring
          _update_live_arousal_hysteresis so a single noisy epoch never flips it.
     """
@@ -70,7 +70,7 @@ class ValenceVerdictStabilizer:
     CONF_MIN = 0.7          # below this margin the epoch is treated as neutral
                             # (raised from 0.6: at ~0.5 the WESAD model is at
                             # chance on this subject, so only clearly-confident
-                            # epochs assert a quadrant — honest "don't know" else)
+                            # epochs assert a quadrant, honest "don't know" else)
     MEDIAN_WINDOW = 5       # epochs in the rolling median
     HYSTERESIS_TICKS = 3    # consecutive epochs a new quadrant must persist
 

@@ -16,15 +16,12 @@ from affectus.dsp.hrv.results import (
     HrvMetrics,
     MultiWindowHrvResult,
     MultiWindowResult,
-    PhysiologyDecision,
     WindowResult,
 )
 from affectus.io.messages import (
     AcquisitionBatchMessage,
     IbiBatchMessage,
-    InterbeatIntervalEntry,
 )
-from affectus.dsp.hrv.metrics import compute_hrv_from_entries
 from affectus.config import (
     HRV_LOOKBACK_MS,
     MIN_BEATS_FOR_ANY_HRV,
@@ -66,77 +63,33 @@ class PhysiologyPipeline:
         # quality gate as the HRV baseline.
         self.temperature = SkinTemperatureChannelState(persist=True)
         # Personal valence calibration (WESAD/EEVR/CASE baselines + smoothers) used
-        # to be held here. It is research state — valence is observed-only, on trial
-        # before it is trusted in the verdict — so it now lives in ResearchEngines
+        # to be held here. It is research state, valence is observed-only, on trial
+        # before it is trusted in the verdict, so it now lives in ResearchEngines
         # (affectus/research/), keeping this production engine free of research
         # imports and holding only the arousal + temperature state it actually
         # decides on. The compute service feeds and resets those tracks separately.
         # One-time subject reactivity profile: scales the valence dead-band.
         self.reactivity = ReactivityProfile(persist=True)
-        # While an ECG calibration is in progress, PPG must NOT lock the baseline
-        # (it would win the race before the user puts their finger on the button).
-        # 0 = no ECG window; otherwise the epoch-clock deadline past which PPG
-        # takes over as fallback. Set by the compute service.
-        self.ecg_calibration_until: float = 0.0
-        # ECG calibration beats accumulated this hold. HRV is computed directly
-        # from these (no 60 s rolling window), so the baseline can lock within the
-        # 45 s finger-hold instead of waiting for a full window to fill.
-        self._ecg_cal_beats: list = []
         self.quality_state = SignalQualityState()
         self.decision_state = DecisionState()
         self.state = PipelineState()
-        # The sensors the device DECLARED at the handshake — the single source of
+        # The sensors the device DECLARED at the handshake, the single source of
         # truth for which fusion channels run. Set by the compute service from the
         # biofizic/hello announcement. None until a handshake arrives: a watch that
         # streams before announcing still gets a verdict via the decide() fallback.
         self.declared_capabilities: "frozenset | None" = None
 
     def set_declared_capabilities(self, caps: "frozenset | None") -> None:
-        """Record the sensors the device announced. These — not what each payload
-        happens to carry — decide which channels the fusion runs."""
+        """Record the sensors the device announced. These, not what each payload
+        happens to carry, decide which channels the fusion runs."""
         self.declared_capabilities = caps
 
     def ingest_ibi_batch(self, batch: IbiBatchMessage) -> None:
         self.ibi_buffer.ingest_batch(batch)
 
-    def reset_ecg_calibration(self) -> None:
-        """Clear the accumulated ECG beats at the start of a new finger-hold."""
-        self._ecg_cal_beats = []
-
-    def ingest_ecg_calibration(self, batch: IbiBatchMessage, *, now: float) -> bool:
-        """Feed ECG-derived IBI into the arousal baseline during calibration.
-
-        HRV is computed DIRECTLY from the ECG beats accumulated this hold (no 60 s
-        rolling window), so the baseline locks within the 45 s finger-hold rather
-        than waiting for a full HRV window to fill. ECG (a deliberate finger-hold)
-        is motion-immune and the subject is still by definition, so this BYPASSES
-        the motion/quality gate the PPG path needs. The 1 s spacing gate inside
-        observe_resting is kept (pass `now`) so the locked baseline's MAD stays
-        meaningful: a sample is accepted ~once per real second of contact, 8 of
-        them lock it in ~8 s. Returns whether the baseline has locked."""
-        for ms, ts in zip(batch.intervals_ms, batch.timestamps_ms):
-            self._ecg_cal_beats.append(InterbeatIntervalEntry(interval_ms=ms, timestamp_ms=ts))
-        # Keep a bounded recent window of beats so the HRV stats reflect the hold,
-        # not stale data (a comfortable ~90 s of beats at any heart rate).
-        if len(self._ecg_cal_beats) > 200:
-            self._ecg_cal_beats = self._ecg_cal_beats[-200:]
-        if len(self._ecg_cal_beats) < MIN_BEATS_FOR_ANY_HRV:
-            return self.baseline.is_ready
-        hrv = compute_hrv_from_entries(self._ecg_cal_beats)
-        if hrv is None or hrv.kubios_stress_index <= 0 or hrv.rmssd_ms <= 0:
-            return self.baseline.is_ready
-        self.baseline.observe_resting(
-            hrv.rmssd_ms,
-            hrv.kubios_stress_index,
-            heart_rate_bpm=hrv.mean_heart_rate_bpm,
-            now=now,
-            min_spacing_s=1.0,
-        )
-        return self.baseline.is_ready
-
     def ingest_acquisition(self, batch: AcquisitionBatchMessage) -> None:
         """Atomic ingest of a watch batch: route its signals into the rolling
-        buffers. The batch IS the in-process sensor record — no intermediate frame.
+        buffers. The batch IS the in-process sensor record, no intermediate frame.
         Empty signals are no-ops (no IBI -> nothing buffered; no motion -> energy 0),
         so the routing needs no capability gate. Which CHANNELS run is decided later,
         from the handshake-declared capabilities, not from what one batch carries."""
@@ -181,7 +134,7 @@ class PhysiologyPipeline:
         if buf_size >= MIN_BEATS_FOR_ANY_HRV:
             multi = self.multi_window.compute(all_entries, end_timestamp_ms=end_ms)
         else:
-            multi = MultiWindowHrvResult(None, None, None, None)
+            multi = MultiWindowHrvResult(None, None, None)
 
         w30 = self._window_result_from_metrics(multi.window_30_seconds)
         w60 = self._window_result_from_metrics(multi.window_60_seconds)
@@ -222,13 +175,8 @@ class PhysiologyPipeline:
         sdk_hr = sensor.heart_rate_bpm if sensor else 0.0
 
         # Lock / update the personal baseline only on high-quality resting epochs.
-        # During an active ECG-calibration window, PPG is suppressed so the clean
-        # ECG IBI builds the baseline (PPG would otherwise lock it first). Past the
-        # window deadline (user never held the finger), PPG resumes as fallback.
-        ecg_window_active = now_ts < self.ecg_calibration_until
         if (
-            not ecg_window_active
-            and quality.usable
+            quality.usable
             and quality.motion_state == "still"
             and primary is not None
             and primary.beat_count >= MIN_BEATS_FOR_ANY_HRV
@@ -308,7 +256,7 @@ class PhysiologyPipeline:
         self.temperature.reset()
         self.decision_state.reset()
         # Valence re-anchoring (WESAD/EEVR/CASE personal neutrals + smoothers) is no
-        # longer done here — that state lives in ResearchEngines. The compute service
+        # longer done here, that state lives in ResearchEngines. The compute service
         # calls research.reset_valence_tracks(reported_valence) right after this, so a
         # recalibration still re-measures every model's neutral from the new resting
         # epochs. reported_valence is accepted (and ignored here) so the call site

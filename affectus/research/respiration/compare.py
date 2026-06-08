@@ -3,7 +3,7 @@ Respiration comparator (research): RSA-from-IBI vs PPG-amplitude, side by side.
 
 Runs both isolated estimators on each epoch and reports both rates, both
 confidences, and their agreement, so the thesis can answer empirically: on
-wrist PPG — and especially for a slow, quiet breather — which respiration source
+wrist PPG, and especially for a slow, quiet breather, which respiration source
 is more reliable? Published only on biofizic/legacy/resp; never feeds the VR
 decision. Neither estimator is fused into PhysiologyDecision until this
 comparison justifies it (the B2d gate).

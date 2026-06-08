@@ -19,7 +19,7 @@ lookup, personal mapping) are private functions in this file.
 The public API is one function: `decide(...)` plus `DecisionState`.
 
 `PhysiologyDecision` (the shape served to the watch and the dashboards)
-remains identical — this refactor is purely internal consolidation.
+remains identical, this refactor is purely internal consolidation.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ def decide(
     """One epoch tick: fuse channels, smooth via Kalman, gate the verdict.
 
     The decision flow:
-      1. Compute personal z's (HRV + HR) — zero before baseline locks.
+      1. Compute personal z's (HRV + HR), zero before baseline locks.
       2. Fuse:  z_fused = Q · z_hrv + (1 - Q) · z_hr
                  confidence = Q · q_hrv + (1 - Q) · q_hr
       3. Cap confidence in preliminary mode (no personal baseline yet).
@@ -87,7 +87,7 @@ def decide(
     """
     sdk_hr = sensor.heart_rate_bpm if sensor else 0.0
 
-    # 1) Personal z-scores — both 0 until the baseline locks.
+    # 1) Personal z-scores, both 0 until the baseline locks.
     stress_z = (
         baseline.stress_index_z_score(primary.kubios_stress_index)
         if baseline.is_ready
@@ -104,7 +104,7 @@ def decide(
     # touching this math; with only HRV+HR the result is identical to the prior
     # z_fused = Q·z_hrv + (1-Q)·z_hr.
     hrv_weight = quality.quality
-    # `present` is the set of sensors the device DECLARED at the handshake — the
+    # `present` is the set of sensors the device DECLARED at the handshake, the
     # single source of truth for which channels run. For a wrist watch
     # (IBI+HR+SKIN_TEMP) this yields [hrv, hr, (temp when it has data)]. No
     # declaration means no channels: the pipeline already skips decide() in that
@@ -130,7 +130,7 @@ def decide(
     else:
         dominant_channel = "blend"
 
-    # 4) Kalman — once per epoch, only when we have a personal anchor.
+    # 4) Kalman, once per epoch, only when we have a personal anchor.
     # run() is called every second on the same rolling 30 s window; updating
     # every second would track that 1 Hz re-noise and make arousal jump.
     if publish_epoch and baseline.is_ready and primary.kubios_stress_index > 0:

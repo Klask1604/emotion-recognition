@@ -10,7 +10,7 @@ train/train_valence_wesad.py. Uses the SAME extractor as training
 Mirrors the temperature-channel pattern: a lazily-loaded state object plus an
 evaluate function returning a FusionChannel (or None). Bounded by
 VALENCE_WESAD_MAX_WEIGHT (default 0 = disabled) since it is a cross-device
-domain-shift model — it must only nudge, never dominate. Requires the raw PPG
+domain-shift model, it must only nudge, never dominate. Requires the raw PPG
 waveform (vascular/morphology features), so its capability set includes PPG.
 """
 
@@ -49,7 +49,7 @@ class ValenceWesadState:
         self._loaded = True
         p = path or default_model_path()
         if not p.exists():
-            log.info("valence_wesad model not found at %s — channel disabled", p)
+            log.info("valence_wesad model not found at %s, channel disabled", p)
             return
         try:
             import joblib

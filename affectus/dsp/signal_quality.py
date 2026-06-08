@@ -30,7 +30,7 @@ post-warm-up. The deterministic formula keeps the same shape (smooth degrade)
 without unverified state.
 
 Outputs:
-  quality Q in [0, 1] — the decision-confidence component contributed by HRV.
+  quality Q in [0, 1], the decision-confidence component contributed by HRV.
   usable  = A <= A_MAX and motion_state == "still" (Kubios-aligned cutoff).
   motion_state = still / moving from the robust energy baseline + hysteresis.
 """
@@ -39,6 +39,10 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from affectus.dsp.profiles import SensorProfile
 
 from affectus.config import (
     MIN_QUALITY_UPDATES,
@@ -130,7 +134,7 @@ def update_and_score(
     moving_quality_factor = profile.motion_moving_quality_factor
     m = max(0.0, float(motion_energy))
     if not has_signal:
-        # Keep the motion baseline current — that estimator is independent of
+        # Keep the motion baseline current, that estimator is independent of
         # IBI data and otherwise stalls during silent periods.
         motion_state = state.classify_motion(m)
         state.motion_energy.append(m)
@@ -152,7 +156,7 @@ def update_and_score(
     moving = motion_state == "moving"
 
     # Smooth confidence that degrades gradually (1 at zero artifacts, 0.5 at the
-    # reliability cutoff) instead of snapping to 0 the moment A exceeds it — so
+    # reliability cutoff) instead of snapping to 0 the moment A exceeds it, so
     # the displayed confidence is informative, not stuck at 0%.
     artifact_quality = 1.0 / (1.0 + (a / artifact_max) ** 2)
     quality = artifact_quality

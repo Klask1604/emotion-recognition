@@ -99,6 +99,6 @@ _ANNOUNCED_CHANNELS: list[tuple[str, Capability]] = [
 
 def modules_for(caps: DeviceCapabilities) -> list[str]:
     """Names of the fusion channels that WOULD run for a device with these
-    capabilities (capability gate only — independent of runtime weight). Used by
+    capabilities (capability gate only, independent of runtime weight). Used by
     the handshake ack so the watch is told which channels it activates."""
     return [name for name, cap in _ANNOUNCED_CHANNELS if cap in caps.present]

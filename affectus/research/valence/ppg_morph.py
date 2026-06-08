@@ -1,5 +1,5 @@
 """
-PPG morphological (pulse-shape) features for valence — the complement to the
+PPG morphological (pulse-shape) features for valence, the complement to the
 frequency-domain features (valence_ppg_fd). Replicates the morphological feature
 set from Frontiers Physiol. 2025 (PMC11893849, Table 4): per-pulse shape
 descriptors of the rising and falling phases of each systolic wave.

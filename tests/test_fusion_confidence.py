@@ -50,7 +50,7 @@ def _decide(pipeline: PhysiologyPipeline, quality: SignalQuality, sdk_hr: float)
     # Window metrics always have a valid HR; sdk_hr is the (separate) SDK channel
     # whose absence (0) means there is no robust motion channel.
     metrics = _metrics(hr=80.0)
-    multi = MultiWindowHrvResult(None, metrics, None, None)
+    multi = MultiWindowHrvResult(metrics, None, None)
     sensor = AcquisitionBatchMessage(timestamp_publish_ms=0, timestamp_anchor_ms=0, sequence=0, heart_rate_bpm=sdk_hr)
     return decide(
         primary=metrics,

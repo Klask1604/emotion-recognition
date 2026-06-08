@@ -21,16 +21,6 @@ class IbiBatchMessage:
 
 
 @dataclass
-class PpgBatchMessage:
-    """One second of PPG samples from the watch."""
-
-    timestamp_ms: int
-    green: list[int] = field(default_factory=list)
-    infrared: list[int] = field(default_factory=list)
-    sample_timestamps_ms: list[int] = field(default_factory=list)
-
-
-@dataclass
 class AcquisitionBatchMessage:
     """Atomic 1 Hz acquisition frame (schema v2) from the watch."""
 

@@ -1,5 +1,5 @@
 """
-Personal valence baseline — recenters the cross-device WESAD model on the
+Personal valence baseline, recenters the cross-device WESAD model on the
 subject.
 
 The WESAD valence model generalises across subjects (LOSO ~82%) but, applied to
@@ -9,7 +9,7 @@ class, pinning the raw valence_z to one sign regardless of true affect. This is
 the standard wearable problem and the standard fix: a generalist model plus
 light per-subject calibration (Picard; DEAP/WESAD normalise valence per subject).
 
-So the NEUTRAL point of valence is not assumed to be 0 — it is MEASURED as the
+So the NEUTRAL point of valence is not assumed to be 0, it is MEASURED as the
 subject's resting median of valence_z, and the SCALE is the resting MAD. The
 personal valence is then  v = (valence_z - median) / sigma : >0 means more
 positive than the subject's own neutral, <0 more negative. This mirrors
@@ -67,7 +67,7 @@ class ValenceSmoother:
     emotion: at rest the personal valence already varies ~1 sigma from
     physiological noise, and during activity it swings with real but brief events
     (a kill/death in a game). Averaging over WINDOW_S reports the BACKGROUND
-    affective state (mood) rather than each second — the same reason arousal is
+    affective state (mood) rather than each second, the same reason arousal is
     smoothed over a 30-60 s HRV window, not published per second. This is signal
     aggregation, not hiding noise: the window matches the timescale on which an
     emotional state (not an event) actually persists."""
@@ -105,7 +105,7 @@ class ValenceBaselineStore:
         self._last_observation_s: float | None = None
         # Self-reported resting valence (-1..+1) from the last calibration, and a
         # polarity flag set when the model's resting valence contradicts the
-        # subject's report (cross-device sign inversion). Sign-only guard — it
+        # subject's report (cross-device sign inversion). Sign-only guard, it
         # never shifts the neutral, which stays the MEASURED resting median.
         self.reported_baseline_valence: float | None = None
         self._polarity_inverted = False
@@ -136,7 +136,7 @@ class ValenceBaselineStore:
         """Sign-only cross-device guard. If the subject self-reported a clearly
         non-neutral resting valence (e.g. "pleasant") but the model's resting
         valence_z sits strongly on the OPPOSITE side of 0, the model's polarity is
-        likely inverted on this subject — flag it so valence_personal flips sign.
+        likely inverted on this subject, flag it so valence_personal flips sign.
         Coarse by design (a single resting report), and it never moves the neutral
         (which stays the measured median)."""
         self._polarity_inverted = False
@@ -175,7 +175,7 @@ class ValenceBaselineStore:
 
     @property
     def neutral_valence_z(self) -> float | None:
-        """The subject's measured resting median — the personal neutral point."""
+        """The subject's measured resting median, the personal neutral point."""
         return _median(list(self._vz)) if self._vz else None
 
     def deadband(self, smoothing_factor: float = 0.45, reactivity_scale: float = 1.0) -> float:

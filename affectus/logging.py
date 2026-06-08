@@ -1,7 +1,7 @@
 """Human-readable decision logs for Docker / debugging.
 
 Layout per epoch:
-  [SUMMARY]  one-line verdict — the key factors, no formulas
+  [SUMMARY]  one-line verdict, the key factors, no formulas
   [BASELINE] one decisional parameter per line
   [QUALITY]  signal-quality / gating factors
   [WINDOW]   multi-window RMSSD

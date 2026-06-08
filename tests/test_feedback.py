@@ -1,7 +1,8 @@
-"""User emotion-feedback collection: a quadrant tap pairs the user's label with
-the latest 33-feature PPG vector + each model's prediction, appended to a JSONL
-store. Bad quadrants are ignored; a label with no fresh features is still stored
-(absence of usable signal is itself informative)."""
+"""User emotion-feedback collection: a state tap pairs the user's label with the
+live model feature vectors + each model's prediction, appended to a JSONL store.
+Labels are normalized to the 3 model states (CALM/DISCONFORT/PLACUT); old 4-quadrant
+taps are mapped through. Unknown labels are ignored; a label with no fresh features
+is still stored (absence of usable signal is itself informative)."""
 
 from __future__ import annotations
 
@@ -30,14 +31,19 @@ class _FakeClient:
 def test_append_and_load_roundtrip():
     p = _tmp()
     feats = [float(i) * 0.1 for i in range(33)]
+    state_feats = [float(i) for i in range(9)]
+    # Old 4-quadrant "Stresat" maps to the Disconfort state (code 1).
     row = append_feedback("Stresat", feats, arousal_z=1.2, features_age_s=1.5,
-                          preds={"wesad": 0.3, "eevr": 0.6, "case": 0.66}, path=p)
-    assert row["quadrant_code"] == 4
+                          preds={"wesad": 0.3, "eevr": 0.6, "case": 0.66},
+                          state_features=state_feats, path=p)
+    assert row["state"] == "Disconfort"
+    assert row["state_code"] == 1
     assert row["n_features"] == 33
     rows = load_feedback(p)
     assert len(rows) == 1
     assert rows[0]["wesad_p_positive"] == 0.3
     assert rows[0]["features"][0] == 0.0
+    assert rows[0]["state_features"][3] == 3.0
 
 
 def test_label_without_features_still_stored():
@@ -63,6 +69,9 @@ def test_handle_feedback_pairs_label_with_features(monkeypatch):
 
     svc = ComputeEngineService.__new__(ComputeEngineService)
     svc.research = FakeLegacy()
+    # The live state/morpho classifiers whose feature vectors a tap captures.
+    svc._state_clf = type("SC", (), {"last_features": [float(i) for i in range(9)]})()
+    svc._morpho_clf = None
     svc._last_pred = {"wesad": 0.2, "eevr": 0.7, "case": 0.66, "arousal_z": 0.9, "ts": 1}
     client = _FakeClient()
 
@@ -71,7 +80,9 @@ def test_handle_feedback_pairs_label_with_features(monkeypatch):
     rows = load_feedback(p)
     assert len(rows) == 1
     assert rows[0]["quadrant"] == "Bucuros"
+    assert rows[0]["state"] == "Placut"  # Bucuros -> Placut state
     assert rows[0]["n_features"] == 33
+    assert rows[0]["state_features"][5] == 5.0  # captured from the live classifier
     assert rows[0]["arousal_z"] == 0.9
     assert 1.0 <= rows[0]["features_age_s"] <= 2.5  # ~1.5 s old window
     # summary re-published for the dashboard

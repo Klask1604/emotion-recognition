@@ -52,7 +52,7 @@ BAEVSKY_HISTOGRAM_BIN_MS = 50
 
 
 # ---------------------------------------------------------------------------
-# Raw PPG / peak detection (RESEARCH/LEGACY — see biofizic/legacy)
+# Raw PPG / peak detection (RESEARCH/LEGACY, see biofizic/legacy)
 # ---------------------------------------------------------------------------
 
 # Band-pass for the PPG pulse wave: the cardiac band. Below 0.5 Hz is baseline
@@ -67,20 +67,6 @@ PPG_MIN_BEAT_DISTANCE_S = 0.3
 # Rolling window the legacy raw-PPG engine analyses (s) and its PPA baseline.
 PPG_ANALYSIS_WINDOW_S = 8.0
 PPG_PPA_BASELINE_WINDOW = 60
-
-# ECG R-peak detection (calibration only). The Galaxy Watch Lead-I ECG (finger on
-# the button) gives a clean QRS; we band-pass to the QRS energy band, square the
-# derivative (the Pan-Tompkins energy step), and find_peaks. Used ONLY during
-# calibration to build a gold-standard HRV baseline (see shared/dsp/ecg_peaks.py).
-ECG_BAND_LO_HZ = 5.0
-ECG_BAND_HI_HZ = 15.0
-ECG_MIN_SAMPLES = 128
-# 250 ms == 240 bpm ceiling between R-peaks.
-ECG_MIN_BEAT_DISTANCE_S = 0.25
-# Physiological IBI window: 300 ms (200 bpm) .. 2000 ms (30 bpm). R-R outside this
-# is a missed/extra beat and is dropped so it can't corrupt the baseline.
-ECG_IBI_MIN_MS = 300
-ECG_IBI_MAX_MS = 2000
 
 # PPG frequency-domain valence features (replication of Frontiers Physiol. 2025,
 # PMC11893849), adapted to consumer PPG. Works at any sample rate (25 Hz
@@ -164,7 +150,7 @@ LIVE_AROUSAL_HYSTERESIS_TICKS = 3
 ARTIFACT_RATE_MAX = 0.15
 
 # Samples collected before the still/moving classifier is trusted; until then
-# we assume "still" (cold start). Quality is deterministic — no learned weights.
+# we assume "still" (cold start). Quality is deterministic, no learned weights.
 MIN_QUALITY_UPDATES = 8
 
 # Still/moving is decided from the cardiac-band motion energy itself, NOT from
@@ -201,14 +187,14 @@ MOTION_MOVING_QUALITY_FACTOR = 0.1
 # scale, which was not a statistic.
 #
 # DECORRELATION: observe_resting() is driven by the ~1 Hz batch loop, but the
-# HRV window is 60 s, so two observations 1 s apart share ~98% of their beats —
+# HRV window is 60 s, so two observations 1 s apart share ~98% of their beats -
 # they are NOT independent. Collecting 12 such samples gave a near-zero MAD and
 # a hypersensitive z (the floor below was masking it). We therefore space
 # resting observations at least BASELINE_OBSERVATION_INTERVAL_S apart, so the
 # locked baseline is built from less-correlated samples.
 #
 # Lock after this many SPACED resting samples. At 3 s spacing, 8 samples ≈ 24 s
-# of holding still — short enough that a user actually completes it, while the
+# of holding still, short enough that a user actually completes it, while the
 # spacing keeps the MAD meaningful. (Renamed from the old *_EPOCHS name, which
 # wrongly implied 30 s epochs / a ~6 min lock; the loop was always ~1 Hz.)
 BASELINE_MIN_REST_SAMPLES = 8
@@ -222,7 +208,7 @@ Z_SCORE_CLIP = 4.0
 
 
 # ---------------------------------------------------------------------------
-# Skin-temperature arousal channel (EMPIRICAL — see engine/channels/temperature)
+# Skin-temperature arousal channel (EMPIRICAL, see engine/channels/temperature)
 # ---------------------------------------------------------------------------
 
 # Peripheral skin temperature is modelled in LINEAR space (°C is not a positive
@@ -245,7 +231,7 @@ TEMP_AMBIENT_DRIFT_C_FULL_PENALTY = 3.0
 
 # Conservative cap on the temperature channel's fusion weight. Skin temperature
 # is a slow, secondary arousal proxy (vasoconstriction lags HR/HRV by tens of
-# seconds), so it should nudge — never dominate — the HR/HRV verdict. The
+# seconds), so it should nudge, never dominate, the HR/HRV verdict. The
 # channel enters the weighted-mean fusion with weight = confidence · this cap.
 # Start small and revisit once we have live data; documented EMPIRICAL, not a
 # physiological constant. Set to 0 to disable the channel without code changes.
@@ -253,7 +239,7 @@ TEMP_CHANNEL_MAX_WEIGHT = 0.25
 
 # Cap on the WESAD-trained valence channel's fusion weight. This is the first ML
 # model crossing from research into the production decision, and it is trained on
-# a FOREIGN device (Empatica E4 wrist BVP) — a documented domain shift to the
+# a FOREIGN device (Empatica E4 wrist BVP), a documented domain shift to the
 # Galaxy Watch. So it is bounded to only nudge the verdict, never dominate, and
 # defaults to 0 (disabled) until validated on live watch data. Flip up once the
 # transfer is confirmed. The valence channel is also an arousal-orthogonal
@@ -273,7 +259,7 @@ VALENCE_INTENSITY_GATE_Z = 1.0
 
 
 # ---------------------------------------------------------------------------
-# Respiration estimators (RESEARCH — engine/channels/respiration_*; not fused yet)
+# Respiration estimators (RESEARCH, engine/channels/respiration_*; not fused yet)
 # ---------------------------------------------------------------------------
 
 # RSA-from-IBI breathing-rate estimator search band. Widened below the classic
@@ -298,7 +284,7 @@ RESP_PPG_MIN_BEATS = 20
 # with the signal quality Q, so artifact/motion-heavy epochs barely move the
 # estimate. This is the state-space replacement for the ad-hoc "hold last value"
 # patch (Kalman 1960). The process/measurement variance ratio sets how fast the
-# estimate follows real changes — these are the tunable smoothing knobs, not
+# estimate follows real changes, these are the tunable smoothing knobs, not
 # decision thresholds.
 KALMAN_PROCESS_VAR = 0.02       # latent z drift per epoch
 KALMAN_MEAS_VAR_BASE = 0.5      # measurement variance at perfect quality (Q=1)
@@ -336,13 +322,13 @@ SKEW_BACKLOG_WARN_SEC = 5.0
 # Pre-baseline fallback (population Kubios zones) verdict honesty cap. Before
 # the personal baseline locks (~6 min of resting epochs), arousal_10 comes
 # from Kubios populational STRESS_INDEX_ZONE_BOUNDS, not from the personal z.
-# That mapping is approximate per-user — the verdict is meaningful (real-time
+# That mapping is approximate per-user, the verdict is meaningful (real-time
 # from the first epoch) but not personalised. We expose this honestly by:
 #   1. setting decision_fidelity = "preliminary" in PhysiologyDecision, and
 #   2. capping fused_confidence at this value so the UI can gate the badge
 #      ("preliminary" vs "calibrated") on confidence alone if desired.
 # After baseline.is_ready flips True, fidelity = "calibrated" and the cap is
-# lifted — confidence can rise to HR_CHANNEL_CONFIDENCE / quality.quality.
+# lifted, confidence can rise to HR_CHANNEL_CONFIDENCE / quality.quality.
 PRELIMINARY_CONFIDENCE_CAP = 0.5
 
 
@@ -432,7 +418,7 @@ def valence_baseline_path() -> Path:
 # Valence personal-baseline sigma floor (linear valence_z units, not log). Keeps
 # the personal z finite when a subject's resting valence is very stable; chosen
 # as a small fraction of the [-1,1] valence_z range, mirroring TEMP_SIGMA_FLOOR_C
-# for the other linear channel. Not a magic threshold — it only prevents
+# for the other linear channel. Not a magic threshold, it only prevents
 # divide-by-near-zero, the actual scale comes from the measured MAD.
 VALENCE_SIGMA_FLOOR = 0.05
 
@@ -454,3 +440,33 @@ REACTIVITY_DEADBAND_SCALE = {
     "normal": 1.0,
     "high": 1.4,
 }
+
+
+# ---------------------------------------------------------------------------
+# Personalization loop (label -> retrain personal 3-state model)
+# ---------------------------------------------------------------------------
+
+# How many of the user's own labels per state before a personal retrain is
+# allowed. Proven on data (EMOGNITION Galaxy, the same generic base the live
+# model uses): with N labels per state the personal model reaches
+#   3 -> 82%, 5 -> 89%, 8 -> 94%, 10 -> 96%  (generic alone is 65%).
+# A self-check guards every swap, but 5/state is already 100% safe.
+PERSONAL_MIN_PER_STATE = 5
+# Same as 5 x 3 states; kept explicit so the count is easy to read in logs.
+PERSONAL_MIN_TOTAL = PERSONAL_MIN_PER_STATE * 3
+
+
+def generic_trainset_path() -> Path:
+    """The frozen generic training set (EMOGNITION Galaxy, 9 raw features +
+    label + subject), exported once next to the model so the in-container
+    retrain can rebuild the generic base without mounting the 16GB dataset.
+    Built by train/results/validation/export_generic_trainset.py."""
+    return ROOT / "models" / "stari_3_generic.npz"
+
+
+def personal_model_path() -> Path:
+    """The retrained personal 3-state model. When present and it passed the
+    self-check, the state classifier prefers it over the generic stari_3.joblib.
+    Lives in the mounted /data volume so it survives a container rebuild (the
+    baked ./models is ephemeral inside Docker)."""
+    return data_dir() / "stari_3_personal.joblib"

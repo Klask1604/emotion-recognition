@@ -36,11 +36,11 @@ logging.basicConfig(
 )
 log = logging.getLogger("mqtt_logger")
 
-# ── Configurare topicuri → campuri InfluxDB ────────────────────────────────────
+# ── Topic -> InfluxDB field configuration ──────────────────────────────────────
 
 # Numeric fields per topic (Influx measurement = topic with / replaced by _).
 FLOAT_FIELDS: dict[str, list[str]] = {
-    "biofizic/state": [
+    "biofizic/out/arousal": [
         "arousal_10", "arousal_pct", "mean_hr", "rmssd", "stress_index",
         "baseline_si", "z_si", "z_si_filtered", "kalman_gain",
         "confidence", "signal_quality", "artifact_rate", "motion_energy",
@@ -49,13 +49,13 @@ FLOAT_FIELDS: dict[str, list[str]] = {
         # 2D emotion verdict (Russell) sent to the watch + valence axis.
         "valence", "valence_deadband", "valence_confidence", "emotion_verdict_code",
     ],
-    "biofizic/state/live": [
+    "biofizic/out/live": [
         "arousal_10", "arousal_10_raw", "arousal_pct", "mean_hr", "rmssd",
         "stress_index", "baseline_si", "z_si", "signal_quality", "artifact_rate",
         "motion_energy", "window_sec", "ibi_buffer_size",
         "valence", "valence_deadband", "valence_confidence", "emotion_verdict_code",
     ],
-    "biofizic/state/windows": [
+    "biofizic/out/windows": [
         "ibi_buffer_size",
         "w30_rmssd", "w30_sdnn", "w30_pnn50", "w30_stress_index", "w30_mean_hr",
         "w30_ibi_count", "w30_covered_seconds",
@@ -71,14 +71,14 @@ STRING_FIELDS: dict[str, list[str]] = {}
 
 # String fields stored as InfluxDB tags (used for Grafana filtering / coloring).
 TAG_FIELDS: dict[str, list[str]] = {
-    "biofizic/state": [
+    "biofizic/out/arousal": [
         "emotion", "emotion_baseline", "motion_state", "why",
         "dominant_channel", "decision_fidelity", "emotion_verdict",
     ],
-    "biofizic/state/live": [
+    "biofizic/out/live": [
         "emotion", "motion_state", "data_quality", "window_used", "emotion_verdict",
     ],
-    "biofizic/state/windows": [
+    "biofizic/out/windows": [
         "motion_state", "w30_quality", "w60_quality", "w90_quality",
     ],
     # Each valence model's stabilised quadrant LABEL (Neutru/Calm/Trist/...),
@@ -90,23 +90,23 @@ TAG_FIELDS: dict[str, list[str]] = {
 
 # Boolean fields written as 0/1 floats so Grafana can plot them on axes.
 BOOL_FIELDS: dict[str, list[str]] = {
-    "biofizic/state": [
+    "biofizic/out/arousal": [
         "profile_ready",
         "baseline_ready",
         "labels_agree",
         "alert",
         "valence_ready",
     ],
-    "biofizic/state/live": [
+    "biofizic/out/live": [
         "live",
         "profile_ready",
         "baseline_ready",
         "valence_ready",
     ],
-    "biofizic/state/windows": ["baseline_ready"],
+    "biofizic/out/windows": ["baseline_ready"],
 }
 
-# Pure aligned live stream (1 Hz, ts_anchor) — Live Sync / Reliability boards.
+# Pure aligned live stream (1 Hz, ts_anchor), Live Sync / Reliability boards.
 FLOAT_FIELDS["biofizic/live"] = [
     "hr_sdk", "mean_hr", "rmssd", "stress_index",
     "z_hrv", "z_hr", "hrv_weight", "z_filtered", "kalman_gain", "arousal_10",
@@ -115,17 +115,15 @@ FLOAT_FIELDS["biofizic/live"] = [
 ]
 TAG_FIELDS["biofizic/live"] = ["motion_state", "dominant_channel", "decision_fidelity"]
 BOOL_FIELDS["biofizic/live"] = ["alert", "baseline_ready"]
-BOOL_FIELDS["biofizic/legacy/polarity"] = ["arousal_gated"]
 
-# 3-state emotion verdict (CALM/DISCONFORT/PLACUT) — research/viz, biofizic/state/emotie.
-# Probabilitatile sunt flat (p_calm/p_disconfort/p_placut) ca logger-ul sa le scrie direct.
-FLOAT_FIELDS["biofizic/state/emotie"] = ["confidence", "p_calm", "p_disconfort", "p_placut", "morpho_conf", "valence_x", "arousal_y"]
-TAG_FIELDS["biofizic/state/emotie"] = ["state", "source", "morpho_state"]
-BOOL_FIELDS["biofizic/state/emotie"] = ["baseline_ready", "calibrating", "valence_reliable"]
+# 3-state emotion verdict (CALM/DISCONFORT/PLACUT) on biofizic/out/emotion.
+# Probabilities are flat (p_calm/p_disconfort/p_placut) so the logger writes them directly.
+FLOAT_FIELDS["biofizic/out/emotion"] = ["confidence", "p_calm", "p_disconfort", "p_placut", "morpho_conf", "valence_x", "arousal_y"]
+TAG_FIELDS["biofizic/out/emotion"] = ["state", "source", "morpho_state"]
+BOOL_FIELDS["biofizic/out/emotion"] = ["baseline_ready", "calibrating", "valence_reliable"]
 
 # Parallel research/legacy engines (never feed VR; for comparison dashboards).
 FLOAT_FIELDS.update({
-    "biofizic/legacy/wesad": ["p_stress"],
     "biofizic/legacy/ppg": ["n_peaks", "ppa", "ppa_z", "sample_rate_hz", "ibi_recon_mean"],
     # Respiration comparator: RSA-from-IBI vs PPG-amplitude, side by side, plus
     # the agreement when both are confident (see legacy/respiration_compare).
@@ -166,13 +164,6 @@ FLOAT_FIELDS.update({
         "valence_personal", "valence_personal_60s", "valence_deadband",
         "neutral_valence_z", "valence_baseline_ready", "emotion_code",
     ],
-    # Polarity (negative / neutral / positive) - the product-facing 3-class model.
-    # p_* are class probabilities; polarity_z in [-1,1] (>0 positive); label_code
-    # -1 negative / 0 neutral / 1 positive.
-    "biofizic/legacy/polarity": [
-        "p_neutral", "p_negative", "p_positive", "polarity_z",
-        "confidence", "label_code", "arousal_z",
-    ],
     # User emotion feedback summary (one row per tap). The 33 features stay in
     # data/feedback_labels.jsonl; Influx holds only the label + each model's
     # prediction so the dashboard can show model-vs-truth.
@@ -181,14 +172,12 @@ FLOAT_FIELDS.update({
     ],
     # VR scene context from Unity (raw visual cues). Logged so the dashboard can
     # show that valence comes from the SCENE, synced with arousal.
-    "biofizic/context": ["light", "r", "g", "b", "motion"],
+    "biofizic/in/context": ["light", "r", "g", "b", "motion"],
 })
 
 ALL_TOPICS = list(FLOAT_FIELDS.keys()) + [
-    "biofizic/acquisition/batch",
-    # 100 Hz on-demand PPG (valence frequency-domain features + raw archive for
-    # DEAP-style offline work). Its own clean topic, separate from the test dumps.
-    "biofizic/ppg/ondemand",
+    # PPG 100 Hz now comes INCLUDED in acquisition (a single optical tracker).
+    "biofizic/in/acquisition",
     # Cardiac comparator (test_engine, opt-in): raw PPG @100/25 Hz + derived
     # HR/RMSSD per source. Dispatch in _on_message routes by leaf topic name.
     "biofizic/test/ppg_continuous",
@@ -201,7 +190,7 @@ ALL_TOPICS = list(FLOAT_FIELDS.keys()) + [
 
 # QoS 1 for low-rate epoch decisions so they survive MQTT reconnects.
 TOPIC_QOS: dict[str, int] = {
-    "biofizic/state": 1,
+    "biofizic/out/arousal": 1,
 }
 
 # Short keepalive so a dropped/stale connection to the (remote) broker is
@@ -210,7 +199,7 @@ TOPIC_QOS: dict[str, int] = {
 MQTT_KEEPALIVE_SEC = 20
 
 FLOAT_FIELDS.update({
-    "biofizic/acquisition/batch": [
+    "biofizic/in/acquisition": [
         "hr", "skin_temp", "ambient_temp",
         "acc_rms", "acc_p90", "acc_std", "gyro_rms", "gyro_p90", "gyro_std",
         "acc_band_cardiac",
@@ -222,10 +211,9 @@ FLOAT_FIELDS.update({
 
 
 # Measurements that only get written when a research/legacy toggle is on. We
-# seed each with one zero row at startup so the FlightSQL table EXISTS — Grafana
+# seed each with one zero row at startup so the FlightSQL table EXISTS, Grafana
 # then shows "No data" instead of a hard "table not found" error in those panels.
 SEED_MEASUREMENTS: dict[str, list[str]] = {
-    "biofizic_legacy_wesad": ["p_stress"],
     "biofizic_legacy_ppg": ["n_peaks", "ppa", "ppa_z", "sample_rate_hz", "ibi_recon_mean"],
     "biofizic_legacy_resp": [
         "rsa_bpm", "rsa_conf", "rsa_prom",
@@ -249,10 +237,6 @@ SEED_MEASUREMENTS: dict[str, list[str]] = {
         "p_positive", "valence_z", "confidence", "src_hz",
         "valence_personal", "valence_personal_60s", "valence_deadband",
         "neutral_valence_z", "valence_baseline_ready",
-    ],
-    "biofizic_legacy_polarity": [
-        "p_neutral", "p_negative", "p_positive", "polarity_z",
-        "confidence", "label_code", "arousal_z",
     ],
     "biofizic_legacy_feedback": [
         "quadrant_code", "arousal_z", "wesad_p", "eevr_p", "case_p",
@@ -278,8 +262,23 @@ SEED_MEASUREMENTS: dict[str, list[str]] = {
 }
 
 
+# Topicurile de PRODUCTIE s-au redenumit pe schema in/out, dar measurement-urile
+# InfluxDB raman cu numele ISTORIC ca sa NU se rupa niciun dashboard Grafana
+# (query-urile interogheaza biofizic_state, biofizic_state_emotie, etc). Decuplare
+# explicita: topic nou -> measurement vechi. Research (legacy/test) ramane pe
+# replace automat.
+_MEASUREMENT_OVERRIDE: dict[str, str] = {
+    "biofizic/in/acquisition": "biofizic_acquisition_batch",
+    "biofizic/in/context": "biofizic_context",
+    "biofizic/out/arousal": "biofizic_state",
+    "biofizic/out/live": "biofizic_state_live",
+    "biofizic/out/windows": "biofizic_state_windows",
+    "biofizic/out/emotion": "biofizic_state_emotie",
+}
+
+
 def topic_to_measurement(topic: str) -> str:
-    return topic.replace("/", "_")
+    return _MEASUREMENT_OVERRIDE.get(topic, topic.replace("/", "_"))
 
 
 def flatten_windows(payload: dict) -> dict:
@@ -430,7 +429,7 @@ class MqttInfluxLogger:
 
     def _heartbeat(self, period_s: int = 30) -> None:
         """Every period_s, log message flow so a SILENT stall (connected but not
-        receiving, or InfluxDB writer stuck) is visible with a timestamp — these
+        receiving, or InfluxDB writer stuck) is visible with a timestamp, these
         do NOT trigger on_disconnect, so the heartbeat is how we catch them."""
         last_recv = 0
         last_ok = 0
@@ -442,13 +441,13 @@ class MqttInfluxLogger:
             last_recv, last_ok = self._msgs_recv, self._msgs_ok
             if d_recv == 0:
                 log.warning(
-                    "HEARTBEAT STALL: 0 MQTT msgs in %ds (last %.0fs ago) — "
+                    "HEARTBEAT STALL: 0 MQTT msgs in %ds (last %.0fs ago), "
                     "connected but not receiving (broker/subscription).", period_s, age,
                 )
             elif d_ok == 0:
                 log.warning(
                     "HEARTBEAT STALL: received %d msgs but 0 InfluxDB writes confirmed "
-                    "in %ds — write worker stuck. (recv=%d ok=%d err=%d)",
+                    "in %ds, write worker stuck. (recv=%d ok=%d err=%d)",
                     d_recv, period_s, self._msgs_recv, self._msgs_ok, self._msgs_err,
                 )
             else:
@@ -463,7 +462,7 @@ class MqttInfluxLogger:
         if rc == 0:
             for t in ALL_TOPICS:
                 client.subscribe(t, qos=TOPIC_QOS.get(t, 0))
-            log.info(f"MQTT conectat — subscris la {len(ALL_TOPICS)} topicuri")
+            log.info(f"MQTT conectat, subscris la {len(ALL_TOPICS)} topicuri")
             self._seed_measurements()
         else:
             log.error(f"MQTT connect failed rc={rc}")
@@ -478,7 +477,7 @@ class MqttInfluxLogger:
         dt = datetime.now(timezone.utc)
         for measurement, fields in SEED_MEASUREMENTS.items():
             point = Point(measurement).time(dt)
-            # biofizic_test_derived is tag-partitioned by source — seed one row
+            # biofizic_test_derived is tag-partitioned by source, seed one row
             # per known source so the `source` column exists in the FlightSQL
             # schema before the first real publish (otherwise Grafana panels
             # that filter WHERE source = '...' fail with "no such column").
@@ -669,9 +668,9 @@ class MqttInfluxLogger:
         topic = msg.topic
         measurement = topic_to_measurement(topic)
 
-        if topic == "biofizic/state/windows":
+        if topic == "biofizic/out/windows":
             data = flatten_windows(data)
-        elif topic == "biofizic/acquisition/batch":
+        elif topic == "biofizic/in/acquisition":
             # ALL DATA LIVE: unroll the raw PPG samples and IBI beats to
             # per-sample points before flattening to the summary point.
             self._write_all_data_live(data)
@@ -679,9 +678,6 @@ class MqttInfluxLogger:
         elif topic == "biofizic/legacy/ppg":
             # Overlay the detected PPG peaks on the raw wave dashboard.
             self._write_ppg_peaks(data)
-        elif topic == "biofizic/ppg/ondemand":
-            self._write_test_ppg_raw("biofizic_ppg_ondemand", data)
-            return
         elif topic == "biofizic/test/ppg_continuous":
             self._write_test_ppg_raw("biofizic_test_ppg_continuous", data)
             return

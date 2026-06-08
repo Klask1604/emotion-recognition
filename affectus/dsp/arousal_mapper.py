@@ -74,18 +74,6 @@ def personal_arousal_10(z_score: float, offset_z: float = 0.0) -> int:
     return int(round(1.0 + 9.0 * phi))
 
 
-def zone_is_alert_or_higher(zone: KubiosZone) -> bool:
-    return zone.zone_id in (KubiosZoneId.HIGH, KubiosZoneId.VERY_HIGH)
-
-
-def zone_is_elevated_or_higher(zone: KubiosZone) -> bool:
-    return zone.zone_id in (
-        KubiosZoneId.ELEVATED,
-        KubiosZoneId.HIGH,
-        KubiosZoneId.VERY_HIGH,
-    )
-
-
 def arousal_scale_10_to_label(scale_10: int) -> str:
     if scale_10 <= 2:
         return "Relaxat"

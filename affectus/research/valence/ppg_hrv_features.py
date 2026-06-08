@@ -4,7 +4,7 @@ HRV (heart-rate variability) features from PPG-derived inter-beat intervals.
 These are DIFFERENT from valence_ppg_fd (spectral shape of the raw pulse wave)
 and valence_ppg_morph (pulse morphology): here we detect systolic peaks, build
 the IBI series, and compute classic HRV indices that index vagal/sympathetic
-balance — the autonomic axis linked (weakly) to affect in the literature.
+balance, the autonomic axis linked (weakly) to affect in the literature.
 
   Time-domain:  mean_hr, sdnn, rmssd, pnn50
   Freq-domain:  lf_power (0.04-0.15 Hz), hf_power (0.15-0.40 Hz), lf_hf_ratio

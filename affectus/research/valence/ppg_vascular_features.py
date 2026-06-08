@@ -1,5 +1,5 @@
 """
-PPG vascular-tone features for valence — based on a VALIDATED physiological
+PPG vascular-tone features for valence, based on a VALIDATED physiological
 mechanism, not an invented proxy.
 
 Autonomic valence responses drive peripheral vasomotor tone: unpleasant/fear
@@ -14,7 +14,7 @@ is directly readable from the PPG pulse wave:
   rise_time       = systolic upstroke time (vascular stiffness/tone)
   pulse_width     = beat duration at half amplitude
   reflection_idx  = secondary (dicrotic) peak height / systolic peak
-                    (arterial reflection — changes with vasomotor tone)
+                    (arterial reflection, changes with vasomotor tone)
 
 All averaged over the window. Research only; pure function.
 """

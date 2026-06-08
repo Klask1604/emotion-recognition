@@ -30,7 +30,7 @@ def test_valid_announce_acks_ok_and_caches(engine):
         "capabilities": ["ibi", "hr", "ppg", "motion", "temp"],
     })
     topic, payload, qos = client.published[-1]
-    assert topic == "biofizic/hello/ack"
+    assert topic == "biofizic/out/hello/ack"
     assert payload["status"] == "ok"
     assert payload["modules_active"] == ["hrv", "hr", "temp"]
     assert "gw7" in engine._announced_caps
@@ -40,7 +40,7 @@ def test_skin_temp_only_acks_error_and_no_cache(engine):
     client = _FakeClient()
     engine._handle_hello(client, {"client_id": "bad", "capabilities": ["temp"]})
     topic, payload, _ = client.published[-1]
-    assert topic == "biofizic/hello/ack"
+    assert topic == "biofizic/out/hello/ack"
     assert payload["status"] == "error"
     assert payload["modules_active"] == []
     assert "bad" not in engine._announced_caps

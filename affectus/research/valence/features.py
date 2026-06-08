@@ -1,14 +1,14 @@
 """
-Unified valence feature vector — the single extractor used by BOTH the WESAD
+Unified valence feature vector, the single extractor used by BOTH the WESAD
 training script and the live valence fusion channel, guaranteeing train/serve
 parity (the same feature order and definitions on both sides).
 
 Combines the four PPG feature families that, on WESAD (stress vs amusement),
 reach ~85% subject-independent valence accuracy:
-  vascular  — perfusion index / tone (the strongest single family)
-  freq      — HR-harmonic FFT features
-  morph     — pulse-shape morphology
-  hrv       — RMSSD / pNN50 / LF-HF (vagal tone)
+  vascular , perfusion index / tone (the strongest single family)
+  freq     , HR-harmonic FFT features
+  morph    , pulse-shape morphology
+  hrv      , RMSSD / pNN50 / LF-HF (vagal tone)
 
 extract_valence_feature_vector(green, ts) -> list[float] | None
 Returns None when any family is invalid (too few beats / bad window), so callers
@@ -33,7 +33,7 @@ from affectus.research.valence.ppg_morph import (
 
 _FD_KEYS = ["bf_n", "fhf_n", "shf_n", "fhf_bf", "shf_bf", "shf_fhf"]
 
-# Canonical feature order — identical in training and serving.
+# Canonical feature order, identical in training and serving.
 VALENCE_FEATURE_NAMES = (
     list(VASC_FEATURE_NAMES)
     + list(_FD_KEYS)

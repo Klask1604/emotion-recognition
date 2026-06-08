@@ -6,7 +6,7 @@ Like the respiration comparator, one acquisition batch carries only ~1 s of PPG,
 but the FFT needs a ~20 s window (the paper's epoch), so we keep a rolling PPG
 buffer. The HR fundamental is taken from the batch's reported HR.
 
-This engine extracts FEATURES only — it does not output a valence verdict,
+This engine extracts FEATURES only, it does not output a valence verdict,
 because a trustworthy verdict needs an SVM trained on labelled data we do not
 have for the watch. The features feed (a) a thesis demonstration that the SOTA
 method is computable on consumer PPG, and (b) future classifier training against

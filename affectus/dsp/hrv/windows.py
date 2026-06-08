@@ -11,7 +11,7 @@ from affectus.io.messages import IbiBatchMessage, InterbeatIntervalEntry
 
 
 class MultiWindowProcessor:
-    """Runs the same HRV pipeline on 15, 30, 60, and 90 second lookbacks."""
+    """Runs the same HRV pipeline on 30, 60, and 90 second lookbacks."""
 
     def __init__(
         self,
@@ -40,7 +40,6 @@ class MultiWindowProcessor:
             results[seconds] = compute_hrv_from_entries(window_entries)
 
         return MultiWindowHrvResult(
-            window_15_seconds=results.get(15),
             window_30_seconds=results.get(30),
             window_60_seconds=results.get(60),
             window_90_seconds=results.get(90),

@@ -2,7 +2,7 @@
 Capability contract: a wearable is described by WHICH SIGNALS it carries, not by
 its model. The device announces its capabilities at the handshake
 (contract/handshake.py); the pipeline then runs only the fusion channels whose
-required capability was declared — no branching on "is this a GW8".
+required capability was declared, no branching on "is this a GW8".
 
 Presence is a capability flag (run the channel at all); usefulness stays a weight
 (how much it contributes). Two clean gates, never one overloaded.
@@ -22,7 +22,7 @@ class Capability(str, Enum):
     MOTION = "motion"      # accelerometer / gyroscope motion energy
     SKIN_TEMP = "temp"     # peripheral skin temperature
     HR = "hr"              # SDK-processed heart-rate scalar
-    # Declared-but-unimplemented slots — future adapters/modules plug in here:
+    # Declared-but-unimplemented slots, future adapters/modules plug in here:
     EDA = "eda"            # electrodermal activity (GW8)
     EEG = "eeg"            # electroencephalography (head-worn)
     ECG_RAW = "ecg_raw"    # raw ECG (chest strap)

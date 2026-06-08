@@ -1,8 +1,8 @@
 """
 PPG peak detection (research/legacy): band-pass + systolic peak finding.
 
-Used to *show what the IBI algorithm sees* — the filtered pulse wave with the
-detected peaks overlaid — and to reconstruct IBI from PPG and measure pulse
+Used to *show what the IBI algorithm sees*, the filtered pulse wave with the
+detected peaks overlaid, and to reconstruct IBI from PPG and measure pulse
 amplitude (PPA). This is the kind of raw-PPG DSP the production path
 deliberately does not run (wrist PPG is too motion-fragile for autonomic
 features); it exists for the thesis demonstrations.

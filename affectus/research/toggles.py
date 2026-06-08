@@ -26,10 +26,6 @@ ENABLE_RAW_PPG = True
 # ON: PPG peaks + reconstructed-from-PPG IBI for the validation dashboard
 # (compare Samsung IBI vs PPG-derived IBI). Research data collection.
 ENABLE_PPG_PEAKS = True
-# Parallel WESAD RandomForest stress probability (requires scikit-learn + model).
-# OFF: avoids the model-file dependency; it is a documented negative result we
-# can enable later if models/wesad_rf.joblib is present on the host.
-ENABLE_WESAD = False
 # Respiration comparator: RSA-from-IBI vs PPG-amplitude, side by side, on
 # biofizic/legacy/resp. Research-only; decides which (if any) source is reliable
 # enough to fuse later. Needs raw PPG on the watch for the PPG arm (RSA arm
@@ -52,28 +48,20 @@ ENABLE_VALENCE_WESAD = True
 # biofizic/legacy/valence_eevr and biofizic/legacy/valence_case. Same 33-feature
 # shared extractor, same engine class (just a different model bundle), so the
 # three predictions can be compared live on the watch's own signal. Research /
-# thesis comparison only — NEVER feeds biofizic/state. EEVR ≈ chance (56% LOSO),
+# thesis comparison only, NEVER feeds biofizic/state. EEVR ≈ chance (56% LOSO),
 # CASE ≈ 58% (the only real valence signal); the dashboard shows the divergence.
 # Need raw PPG + models/valence_eevr.joblib / valence_case.joblib.
 ENABLE_VALENCE_EEVR = True
 ENABLE_VALENCE_CASE = True
-# Polarity detector (negative-vs-positive) on biofizic/legacy/polarity. The
-# product-facing model: WESAD wrist BVP stress-vs-amusement (~81% LOSO) with a
-# CORAL transform baked in to align to the watch's own signal. Reports a sign
-# (negative/positive/neutral) + confidence, not the full spectrum - only when the
-# affect is real. Needs raw PPG + models/polarity.joblib. Never feeds state.
-ENABLE_POLARITY = True
 
 
 def any_enabled() -> bool:
     return (
         ENABLE_RAW_PPG
         or ENABLE_PPG_PEAKS
-        or ENABLE_WESAD
         or ENABLE_RESPIRATION_COMPARE
         or ENABLE_VALENCE_FD
         or ENABLE_VALENCE_WESAD
         or ENABLE_VALENCE_EEVR
         or ENABLE_VALENCE_CASE
-        or ENABLE_POLARITY
     )

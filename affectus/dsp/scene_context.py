@@ -3,7 +3,7 @@
 Valence cannot be read from wrist PPG (proven). In VR we instead DERIVE it from
 what the scene looks like: the Unity SceneContextProbe measures raw visual cues
 (brightness, dominant colour, motion) and the server maps them here to a valence
-prior in [-1, +1]. This is an HONEST multimodal approach — the verdict combines
+prior in [-1, +1]. This is an HONEST multimodal approach, the verdict combines
 the MEASURED arousal (from physiology) with the SCENE's valence prior (context),
 and the published emotion is marked valence_source="context" so it never pretends
 to read valence from the pulse.
@@ -13,7 +13,7 @@ can be inspected and tuned. Grounded in well-known affective-design heuristics:
   - Bright, green/blue scenes (nature, daylight) read as pleasant  -> +.
   - Dark, red-dominant scenes (danger, blood, alarm) read as unpleasant -> -.
   - High visual motion/chaos pushes toward the negative/threat side at equal light.
-Everything is a PRIOR, not a measurement — it biases the valence axis of the
+Everything is a PRIOR, not a measurement, it biases the valence axis of the
 Russell quadrant, and physiology still drives arousal.
 """
 

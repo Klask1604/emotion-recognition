@@ -60,7 +60,7 @@ def _still_quality() -> SignalQuality:
 
 def _decide(baseline, temperature, *, skin_c: float, ambient_c: float = 24.0):
     metrics = _metrics()
-    multi = MultiWindowHrvResult(None, metrics, None, None)
+    multi = MultiWindowHrvResult(metrics, None, None)
     sensor = AcquisitionBatchMessage(
         timestamp_publish_ms=0, timestamp_anchor_ms=0, sequence=0, heart_rate_bpm=85.0,
         skin_temperature_c=skin_c, ambient_temperature_c=ambient_c,

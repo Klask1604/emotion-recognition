@@ -21,7 +21,7 @@ standard way to get a spectrum from unevenly sampled data without interpolation
 artefacts.
 
 Pure and side-effect free: feed it the recent IBI entries, get back an estimate.
-NOT wired into the pipeline — this is the B2a isolated step, to be compared with
+NOT wired into the pipeline, this is the B2a isolated step, to be compared with
 the PPG-amplitude estimator (B2b) before either is fused.
 """
 
@@ -98,7 +98,7 @@ def estimate_respiration_rsa(entries: list[InterbeatIntervalEntry]) -> Respirati
     angular = 2.0 * np.pi * freqs_hz
     try:
         power = lombscargle(times, signal, angular, normalize=True)
-    except Exception:  # noqa: BLE001 — degenerate input
+    except Exception:  # noqa: BLE001, degenerate input
         return RespirationEstimate(0.0, 0.0, 0.0, 0.0)
 
     peak_idx = int(np.argmax(power))

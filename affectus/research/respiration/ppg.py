@@ -7,7 +7,7 @@ the stroke volume / venous return, so the systolic peak-to-trough amplitude of
 the PPG waveform rises and falls at the breathing frequency. This amplitude
 modulation (often called RIAV) is generally MORE robust at slow breathing rates
 than RSA, because it does not depend on vagal rhythm modulation that weakens with
-age and slow/shallow breathing — which is exactly the target user's regime.
+age and slow/shallow breathing, which is exactly the target user's regime.
 
 Pipeline:
   raw green PPG --(band-pass + peak detect, reuse dsp.ppg_peaks)--> per-beat
@@ -22,8 +22,6 @@ estimator so B2c can compare the two on real recordings before either is fused.
 """
 
 from __future__ import annotations
-
-from dataclasses import dataclass
 
 import numpy as np
 

@@ -76,7 +76,7 @@ DERIVED_PREFIX = "biofizic/test/derived"
 
 class InMemoryBaselineStore(RestBaselineStore):
     """RestBaselineStore that never reads or writes disk. Used by the PPG-only
-    pipelines so each restart starts cold (acceptable — comparison purposes,
+    pipelines so each restart starts cold (acceptable, comparison purposes,
     fast iteration) and the production baseline file is never touched."""
 
     def __init__(self) -> None:
@@ -106,7 +106,7 @@ class InMemoryBaselineStore(RestBaselineStore):
 class _LastBatchContext:
     """The most recent biofizic/acquisition/batch, used to feed motion + temp
     + ts_anchor to the PPG-only pipelines. Without a fresh value we skip the
-    PPG-only publish — there is no motion-equivalent to fabricate."""
+    PPG-only publish, there is no motion-equivalent to fabricate."""
 
     seen: bool = False
     ts_anchor_ms: int = 0
@@ -487,7 +487,7 @@ class CardiacComparator:
     ) -> AcquisitionBatchMessage:
         """Construct a fake AcquisitionBatchMessage with PPG-derived IBI and
         the most recent watch motion/temp. The IBI is the only difference vs
-        the production batch — that isolates the comparison."""
+        the production batch, that isolates the comparison."""
         self._ppg_only_seq += 1
         lb = self._last_batch
         return AcquisitionBatchMessage(

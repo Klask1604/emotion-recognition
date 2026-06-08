@@ -1,10 +1,12 @@
-"""Clasificator MORFOLOGIE PPG -> valenta (DISCONFORT vs PLACUT), axa 2 a cadranului.
+"""PPG morphology classifier -> valence (DISCONFORT vs PLACUT), the 2nd quadrant axis.
 
-Forma undei PPG (vasoconstrictie) separa disconfort de placut la 86% (WESAD 64Hz),
-unde HRV cade la 52%. Consuma PPG brut 100Hz on-demand, il DOWNSAMPLE la 64Hz (paritate
-EXACTA cu antrenarea WESAD), extrage features morfologice, prezice.
+The pulse-wave shape (vasoconstriction) separates discomfort from pleasant at 86%
+(WESAD 64 Hz), where HRV alone collapses to 52%. It consumes the raw 100 Hz PPG,
+DOWNSAMPLES it to 64 Hz (exact parity with WESAD training), extracts fs-invariant
+morphology features (rise time, width, amplitude, area), and predicts. Valence is
+only refined in the activated half of the plane (where the shape carries it).
 
-Research/viz, NU in verdictul de productie. Baseline personal acumulat live (repaus).
+Personal baseline accumulated live at rest.
 Model: train/results/validation/antreneaza_morfologie.py -> models/morfologie_3.joblib
 """
 from __future__ import annotations
@@ -21,15 +23,15 @@ except Exception:  # pragma: no cover
     joblib = None
 
 _MODEL_PATH = Path(__file__).resolve().parents[3] / "models" / "morfologie_3.joblib"
-_TRAIN_FS = 64.0          # WESAD: modelul a vazut 64 Hz -> downsample 100->64 pt paritate
+_TRAIN_FS = 64.0          # WESAD: the model saw 64 Hz -> downsample 100->64 for parity
 _WIN_S = 20
 _BASELINE_MIN = 12
 _BASELINE_WINDOW = 60
-_MIN_SAMPLES = int(_WIN_S * 40)  # macar ~40 Hz worth ca sa merite
+_MIN_SAMPLES = int(_WIN_S * 40)  # at least ~40 Hz worth to be usable
 
 
 class MorphoClassifier:
-    """Buffer PPG 100Hz on-demand -> downsample 64Hz -> morfologie -> 3 stari."""
+    """Buffer 100 Hz on-demand PPG -> downsample to 64 Hz -> morphology -> 3 states."""
 
     _BASELINE_FILE = _MODEL_PATH.parent / "morfologie_3_baseline.npz"
 
@@ -39,6 +41,7 @@ class MorphoClassifier:
         self._feat_buf: deque[np.ndarray] = deque(maxlen=_BASELINE_WINDOW)
         self._mu: np.ndarray | None = None
         self._sd: np.ndarray | None = None
+        self.last_features: list[float] | None = None  # last live vector, for feedback
         if joblib is not None and _MODEL_PATH.exists():
             try:
                 self._bundle = joblib.load(_MODEL_PATH)
@@ -62,13 +65,13 @@ class MorphoClassifier:
         return self._bundle is not None
 
     def ingest_ondemand_ppg(self, samples: list[tuple[int, int]]) -> None:
-        """Primeste (ts_ms, green) la 100 Hz; tine ultimele ~20 s."""
+        """Receive (ts_ms, green) at 100 Hz; keep the last ~20 s."""
         for ts, g in samples:
             self._ppg.append((ts, g))
 
     def _morph_features(self) -> np.ndarray | None:
-        """Extrage forma undei din fereastra curenta, DOWNSAMPLED la 64 Hz.
-        Features identice cu antrenarea: amp, rise_ms, width_ms, area (mean+std)."""
+        """Extract the pulse-wave shape from the current window, DOWNSAMPLED to 64 Hz.
+        Features identical to training: amp, rise_ms, width_ms, area (mean+std)."""
         if len(self._ppg) < _MIN_SAMPLES:
             return None
         ts = np.array([t for t, _ in self._ppg], dtype=float)
@@ -76,7 +79,7 @@ class MorphoClassifier:
         dur_s = (ts[-1] - ts[0]) / 1000.0
         if dur_s < _WIN_S * 0.6:
             return None
-        # downsample la 64 Hz: numarul de esantioane pt durata reala
+        # downsample to 64 Hz: sample count for the real duration
         n64 = max(8, int(dur_s * _TRAIN_FS))
         sig = resample(g, n64)
         fs = _TRAIN_FS
@@ -122,6 +125,7 @@ class MorphoClassifier:
         f = self._morph_features()
         if f is None:
             return None
+        self.last_features = f.tolist()  # cached so a feedback tap can store it
         dev = (f - self._mu) / self._sd
         x = np.hstack([f, dev]).reshape(1, -1)
         model = self._bundle["model"]

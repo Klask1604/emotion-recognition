@@ -1,11 +1,11 @@
 """
-Fusion channels — builds the per-epoch arousal channels for a wrist frame.
+Fusion channels, builds the per-epoch arousal channels for a wrist frame.
 
 This replaces the old device-module registry (devices/registry.py + one file per
 module under devices/wrist/modules/). There is one real device (the wrist watch),
 so a plug-in registry that fanned out over wrist/chest/head module lists to run
 three functions was machinery without a payoff. The capability CONTRACT stays
-(contract/capabilities.py) — chest/head devices will declare what they carry — but
+(contract/capabilities.py), chest/head devices will declare what they carry, but
 assembling the channels is now a flat, readable function: HRV and HR always, plus
 temperature when the frame carries a skin-temperature reading.
 
@@ -83,7 +83,7 @@ def temp_channel(ctx: ChannelContext) -> FusionChannel | None:
 def build_channels(ctx: ChannelContext) -> list[FusionChannel]:
     """Assemble the fusion channels for this epoch, one gate per signal the device
     carries. For a wrist frame (IBI + HR + SKIN_TEMP) this is exactly [hrv, hr, temp]
-    — identical to the previous registry output. HRV requires IBI; the pipeline only
+   , identical to the previous registry output. HRV requires IBI; the pipeline only
     calls decide() once a primary HRV window exists, so IBI is always present here,
     but the gate is kept explicit for a future IBI-less device."""
     channels: list[FusionChannel] = []

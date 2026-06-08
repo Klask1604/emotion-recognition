@@ -2,11 +2,16 @@
 """
 Unified compute engine: MQTT ingestion -> physiology pipeline -> state output.
 
-Publishes three MQTT topics:
-  - biofizic/state         epoch decision (1 per 30 s), retained for bootstrap
-  - biofizic/state/live    smoothed live arousal (1 Hz) for the watch UI
-  - biofizic/state/windows w30/w60/w90 HRV side-by-side (every 5 s) for the
+Publishes the verdict on biofizic/out/* topics:
+  - biofizic/out/arousal   epoch decision (1 per 30 s), retained for bootstrap
+  - biofizic/out/live      smoothed live arousal (1 Hz) for the watch UI
+  - biofizic/out/windows   w30/w60/w90 HRV side-by-side (every 5 s) for the
                            thesis window-comparison dashboard, validation only
+  - biofizic/out/emotion   emotion verdict: arousal-level state (Relaxat/Normal/
+                           "Stres sau Entuziasm") + arousal/valence scores. The
+                           polarity (Stresat vs Entuziasmat) is named only at high
+                           arousal with reliable morphology; otherwise the verdict
+                           reports the ambiguous zone honestly, never a guess.
 """
 
 from __future__ import annotations
@@ -30,18 +35,18 @@ import paho.mqtt.client as mqtt
 
 from affectus.config import (
     EPOCH_PUBLISH_INTERVAL_SECONDS,
-    HRV_LOOKBACK_MS,
     LIVE_AROUSAL_HYSTERESIS_TICKS,
     PRIMARY_DECISION_WINDOW_SECONDS,
     SKEW_BACKLOG_WARN_SEC,
     VALENCE_INTENSITY_GATE_Z,
     WINDOWS_PUBLISH_INTERVAL_SECONDS,
 )
+from affectus.topics import In, Out
 from affectus.dsp.arousal_mapper import arousal_scale_10_to_label
-from affectus.dsp.emotion import emotion_verdict, ValenceVerdictStabilizer
+from affectus.dsp.emotion import ValenceVerdictStabilizer
 from affectus.engine.pipeline import PhysiologyPipeline
 from affectus.research import ResearchEngines, toggles as research_toggles
-from affectus.io.messages import AcquisitionBatchMessage, IbiBatchMessage
+from affectus.io.messages import AcquisitionBatchMessage
 from affectus.dsp.hrv.results import MultiWindowResult, WindowResult
 from affectus.dsp.hrv.results import PhysiologyDecision
 
@@ -109,25 +114,6 @@ def _parse_acquisition(data: dict) -> AcquisitionBatchMessage | None:
     )
 
 
-def _parse_ecg_calibration(data: dict) -> tuple[list[int], list[int], list[int], bool]:
-    """Extract (ecg_mv, timestamps_ms, lead_off, final) from an ECG calibration
-    chunk {recv_ms, samples:[{ts, ecg_mv, lead_off, seq}], final}. Returns empty
-    lists on a malformed payload."""
-    samples = data.get("samples")
-    if not isinstance(samples, list):
-        return [], [], [], False
-    mv: list[int] = []
-    ts: list[int] = []
-    lead: list[int] = []
-    for p in samples:
-        if not isinstance(p, dict) or "ts" not in p or "ecg_mv" not in p:
-            continue
-        ts.append(int(p["ts"]))
-        mv.append(int(p["ecg_mv"]))
-        lead.append(int(p.get("lead_off", 0)))
-    return mv, ts, lead, bool(data.get("final", False))
-
-
 class ComputeEngineService:
     def __init__(self, broker: str, port: int) -> None:
         self.pipeline = PhysiologyPipeline()
@@ -147,7 +133,7 @@ class ComputeEngineService:
         # Calibration is a process, not an instant: a recalibrate clears the
         # baseline, then it must re-collect resting epochs before it is ready
         # again. We hold "collecting" until baseline.is_ready flips back to True,
-        # then publish "done" — so the watch can show a spinner meanwhile.
+        # then publish "done", so the watch can show a spinner meanwhile.
         self._calibrating: bool = False
         self._baseline_was_ready: bool = False
         # Capabilities announced by the watch in the handshake (biofizic/hello),
@@ -177,32 +163,23 @@ class ComputeEngineService:
         # dashboard stabilisers (wesad/eevr/case) now live inside each ValenceTrack
         # in ResearchEngines, so there is no parallel dict to keep in sync here.
         self._valence_stabilizer = ValenceVerdictStabilizer()
-        # 3-state emotion classifier (NEUTRU/STRES/RELAXARE), research/viz only —
-        # NOT in the production arousal verdict. Trained on WESAD (5 HRV + 2 motion +
+        # 3-state classifier (CALM/DISCONFORT/PLACUT): the activation axis of the
+        # quadrant verdict. Trained on EMOGNITION Galaxy (9 HRV+motion features +
         # personal deviation); accumulates its own rest baseline live. Published on
-        # biofizic/state/emotie for Grafana.
+        # biofizic/out/emotion for the watch and Grafana.
         try:
             from affectus.research.stari.state_classifier import StateClassifier
             self._state_clf = StateClassifier()
         except Exception:
             self._state_clf = None
-        # Morphology classifier (axa 2 = valenta din forma undei PPG). Consuma PPG
-        # 100Hz on-demand, downsample la 64Hz, separa DISCONFORT vs PLACUT (86%) unde
-        # HRV cade la 52%. Research/viz, NU in verdictul de productie.
+        # Morphology classifier (axis 2 = valence from PPG wave shape). Consumes the
+        # 100 Hz PPG, downsamples to 64 Hz, separates DISCONFORT vs PLACUT (86%) where
+        # HRV alone drops to 52% here. Refines valence in the activated half.
         try:
             from affectus.research.stari.morpho_classifier import MorphoClassifier
             self._morpho_clf = MorphoClassifier()
         except Exception:
             self._morpho_clf = None
-        # Rolling ECG calibration buffer (raw 500 Hz samples + timestamps + lead).
-        # Filled by the biofizic/ecg/calibrate handler during a finger-hold,
-        # cleared on every cmd/calibrate so each calibration starts clean.
-        self._ecg_cal_mv: list[int] = []
-        self._ecg_cal_ts: list[int] = []
-        self._ecg_cal_lead: list[int] = []
-        # Last R-peak timestamp already fed to the baseline, so each beat is
-        # ingested exactly once across overlapping detection windows (no dupes).
-        self._ecg_last_peak_ms: int = 0
         self.client = mqtt.Client(
             client_id="biofizic_compute",
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
@@ -233,7 +210,7 @@ class ComputeEngineService:
         On a valid announcement, cache the present capabilities (keyed by
         client_id) so the pipeline gates modules by what the device declared, and
         reply status:"ok" with the active module list. On too few sensors to
-        classify, reply status:"error" with the reason — the watch shows it and
+        classify, reply status:"error" with the reason, the watch shows it and
         does not stream."""
         from affectus.contract.handshake import parse_capabilities, validate_announcement
 
@@ -248,7 +225,7 @@ class ComputeEngineService:
             caps = parse_capabilities(cap_names)
             self._announced_caps[client_id] = caps
             # The declared sensors are the single source of truth for which fusion
-            # channels run — push them into the pipeline so decide() gates on the
+            # channels run, push them into the pipeline so decide() gates on the
             # announcement, not on a hardcoded default.
             self.pipeline.set_declared_capabilities(caps)
             log.info("handshake ok: %s announced %s -> modules %s",
@@ -258,85 +235,27 @@ class ComputeEngineService:
             log.warning("handshake rejected: %s -> %s", client_id, ack.reason)
 
         payload = {"ts": int(time.time() * 1000), "client_id": client_id, **ack.as_dict()}
-        client.publish("biofizic/hello/ack", json.dumps(payload), qos=1)
-
-    def _handle_ecg_calibration(self, client, data, now: float) -> None:
-        """Ingest one ECG calibration chunk (raw 500 Hz Lead-I): append to the
-        rolling buffer, detect R-peaks over the accumulated window, build IBI, and
-        feed the arousal baseline (motion-gate-bypassed). When that locks the
-        baseline during the finger-hold, publish phase="done" so the watch stops
-        the spinner — the same signal the epoch loop uses, just driven by ECG."""
-        if not self._calibrating:
-            return  # ECG only matters during an active calibration
-        mv, ts, lead, final = _parse_ecg_calibration(data)
-        if mv:
-            self._ecg_cal_mv.extend(mv)
-            self._ecg_cal_ts.extend(ts)
-            self._ecg_cal_lead.extend(lead)
-            # Cap the buffer to the HRV lookback window so it can't grow unbounded
-            # over a long hold (keep the most recent samples).
-            max_samples = int(HRV_LOOKBACK_MS / 1000.0 * 520)  # ~ lookback @ >500 Hz
-            if len(self._ecg_cal_ts) > max_samples:
-                self._ecg_cal_mv = self._ecg_cal_mv[-max_samples:]
-                self._ecg_cal_ts = self._ecg_cal_ts[-max_samples:]
-                self._ecg_cal_lead = self._ecg_cal_lead[-max_samples:]
-
-        from affectus.dsp.filters.ecg_peaks import detect_ecg_rpeaks
-
-        res = detect_ecg_rpeaks(self._ecg_cal_mv, self._ecg_cal_ts, self._ecg_cal_lead)
-        # Each interval is keyed by its END peak timestamp; feed only beats newer
-        # than the last ingested so re-detecting over the growing buffer never
-        # double-counts (the old bug: same beats ingested every chunk -> the lock
-        # fired on accumulation artifacts, not real elapsed time).
-        new_ts: list[int] = []
-        new_ibi: list[int] = []
-        for ts, ms in zip(res.peak_timestamps_ms[1:], res.reconstructed_ibi_ms):
-            if ts > self._ecg_last_peak_ms:
-                new_ts.append(ts)
-                new_ibi.append(ms)
-        if new_ibi:
-            self._ecg_last_peak_ms = new_ts[-1]
-            batch = IbiBatchMessage(
-                timestamp_ms=new_ts[-1],
-                intervals_ms=new_ibi,
-                timestamps_ms=new_ts,
-            )
-            ready = self.pipeline.ingest_ecg_calibration(batch, now=now)
-            # Re-lock signal, identical to the epoch loop's: announce "done" the
-            # moment the baseline locks from ECG IBI.
-            if self._calibrating and ready and not self._baseline_was_ready:
-                self._calibrating = False
-                self.pipeline.ecg_calibration_until = 0.0  # ECG won; PPG can resume
-                self._publish_calibration(client, "Profile calibrated (ECG)", phase="done")
-            self._baseline_was_ready = ready
+        client.publish(Out.HELLO_ACK, json.dumps(payload), qos=1)
 
     def _on_connect(self, client, userdata, flags, rc, props=None) -> None:
         if rc != 0:
             return
         topics = [
-            ("biofizic/acquisition/batch", 0),
-            ("biofizic/cmd/calibrate", 1),
+            (In.ACQUISITION, 0),
+            (In.CMD_CALIBRATE, 1),
             # Handshake: the watch announces its sensors here; we validate and
-            # reply on biofizic/hello/ack. QoS 1 so the announce/ack survive a
-            # reconnect.
-            ("biofizic/hello", 1),
-            # ECG calibration stream (raw 500 Hz Lead-I) — only flows during a
-            # finger-hold calibration; the server detects R-peaks -> IBI ->
-            # baseline. Enhancement over PPG; PPG resting stays as fallback.
-            ("biofizic/ecg/calibrate", 0),
+            # reply on Out.HELLO_ACK. QoS 1 so the announce/ack survive a reconnect.
+            (In.HELLO, 1),
             # User emotion feedback (a Russell quadrant tap). QoS 1 so a label is
-            # never silently dropped — each one is a hand-collected training pair.
-            ("biofizic/cmd/feedback", 1),
+            # never silently dropped, each one is a hand-collected training pair.
+            (In.CMD_FEEDBACK, 1),
             # VR scene context from Unity (raw visual cues -> valence prior). QoS 0
             # at ~1 Hz; the verdict uses the latest if it is fresh (<10 s).
-            ("biofizic/context", 0),
+            (In.CONTEXT, 0),
         ]
-        # Subscribe to the 100 Hz on-demand PPG when ANY valence engine that uses
-        # the high-rate waveform is active, so each gets the sharp stream instead
-        # of falling back to the 25 Hz batch (which collapses fine-HRV models).
-        if any(getattr(self.research, name, None) is not None for name in
-               ("_valence_fd", "_valence_wesad", "_valence_eevr", "_valence_case")):
-            topics.append(("biofizic/ppg/ondemand", 0))
+        # PPG 100 Hz nu mai e un topic separat: vine in payload-ul acquisition
+        # batch (a single optical tracker). The high-resolution consumers
+        # (morfologie + valence FD) sunt hraniti din handler-ul batch.
         for topic, qos in topics:
             client.subscribe(topic, qos=qos)
         log.info("Compute engine active (acquisition/batch v2)")
@@ -350,39 +269,7 @@ class ComputeEngineService:
         topic = msg.topic
         now = time.time()
 
-        if topic == "biofizic/ppg/ondemand":
-            # 100 Hz on-demand PPG, wrapped as {"recv_ms":.., "samples":[{ts,
-            # green,ir,red},..]}. Feed the valence-FD high-rate buffer; never
-            # touches the decision.
-            vfd = getattr(self.research, "_valence_fd", None)
-            vw = getattr(self.research, "_valence_wesad", None)
-            ve = getattr(self.research, "_valence_eevr", None)
-            vc = getattr(self.research, "_valence_case", None)
-            # Every valence engine that consumes the 100 Hz waveform must get it,
-            # or it falls back to the 25 Hz batch buffer and its morphology/HRV
-            # features degrade (CASE, which leans on fine HRV LF/HF, collapses to
-            # a constant at 25 Hz). Feed all of them.
-            consumers = [c for c in (vfd, vw, ve, vc) if c is not None]
-            sample_list = data.get("samples") if isinstance(data, dict) else None
-            if consumers and isinstance(sample_list, list):
-                samples = [
-                    (int(p["ts"]), int(p["green"]))
-                    for p in sample_list
-                    if isinstance(p, dict) and "ts" in p and "green" in p
-                ]
-                if samples:
-                    for c in consumers:
-                        c.ingest_ondemand_ppg(samples)
-                    # Morphology classifier also eats the 100Hz waveform (axa 2).
-                    if self._morpho_clf is not None and self._morpho_clf.ready:
-                        self._morpho_clf.ingest_ondemand_ppg(samples)
-            return
-
-        if topic == "biofizic/ecg/calibrate":
-            self._handle_ecg_calibration(client, data, now)
-            return
-
-        if topic == "biofizic/hello":
+        if topic == In.HELLO:
             # Capability handshake: the watch announces which sensors it carries
             # ({client_id, schema, capabilities:[...], profile?}). We validate
             # against the server-defined contract, cache the result so the
@@ -392,11 +279,11 @@ class ComputeEngineService:
             self._handle_hello(client, data)
             return
 
-        if topic == "biofizic/cmd/calibrate":
+        if topic == In.CMD_CALIBRATE:
             # Optional self-reports: arousal (0..1) anchors the arousal scale;
             # valence (-1..+1) feeds the polarity sign-guard; reactivity
             # (low|normal|high) is the one-time profile that scales the valence
-            # dead-band. All optional — a bare calibrate still works.
+            # dead-band. All optional, a bare calibrate still works.
             reported = data.get("reported_arousal")
             reported = float(reported) if isinstance(reported, (int, float)) else None
             reported_valence = data.get("reported_valence")
@@ -410,20 +297,10 @@ class ComputeEngineService:
             # Valence calibration lives in research now; re-anchor it on the same
             # recalibration so every model's personal neutral is re-measured.
             self.research.reset_valence_tracks(reported_valence)
-            # ECG calibration is disabled (Samsung ECG R-peak detection was
-            # unreliable on the real watch). Calibration always uses the PPG
-            # resting path. The ECG code stays on disk for future research.
-            self.pipeline.ecg_calibration_until = 0.0
             # Recalibration re-anchors valence -> drop the verdict history too so
             # it doesn't carry the old subject's hysteresis/median into the new one.
             self._valence_stabilizer.reset()
             self._last_emotion_verdict = ("Neutru", 0)
-            # Fresh ECG calibration buffer for this run (no stale finger-hold data).
-            self._ecg_cal_mv = []
-            self._ecg_cal_ts = []
-            self._ecg_cal_lead = []
-            self._ecg_last_peak_ms = 0
-            self.pipeline.reset_ecg_calibration()
             # Reset clears the baseline -> not ready. Enter "collecting" and let
             # the epoch loop publish "done" once it re-locks.
             self._calibrating = True
@@ -435,18 +312,21 @@ class ComputeEngineService:
             )
             return
 
-        if topic == "biofizic/cmd/feedback":
+        if topic == In.CMD_FEEDBACK:
             self._handle_feedback(client, data, now)
             return
 
-        if topic == "biofizic/context":
+        if topic == In.CONTEXT:
             self._handle_context(data, now)
             return
 
-        if topic == "biofizic/acquisition/batch":
+        if topic == In.ACQUISITION:
             batch = _parse_acquisition(data)
             if batch is None:
                 return
+            # PPG 100 Hz now arrives in the batch (a single optical tracker). Feed
+            # the high-resolution consumers (production morphology + valence FD).
+            self._feed_highrate_ppg(batch)
             # Diagnostic: watch->server skew measured AT receipt (clock offset +
             # delivery latency). ~0 => watch clock fine and stream live; a large
             # value => watch clock behind OR a delivery backlog.
@@ -458,7 +338,7 @@ class ComputeEngineService:
                 if now - self._last_skew_log >= 10.0:
                     self._last_skew_log = now
                     log.warning(
-                        "watch->server skew = %.1f s — delivery backlog (data arriving late)",
+                        "watch->server skew = %.1f s, delivery backlog (data arriving late)",
                         skew_s,
                     )
             elif now - self._last_skew_log >= 10.0:
@@ -476,6 +356,29 @@ class ComputeEngineService:
             return
 
         return
+
+    def _feed_highrate_ppg(self, batch) -> None:
+        """Feed the high-resolution PPG consumers (100 Hz) from the batch.
+
+        PPG-ul 100 Hz vine acum in payload-ul acquisition batch (un singur tracker
+        optic pe ceas, nu mai e topic separat). Morfologia (productie, axa valenta)
+        si motoarele de valenta FD (research) primesc forma de unda densa de aici.
+        Daca batch-ul nu poarta PPG (raw PPG off), nu face nimic."""
+        green = batch.ppg_green or []
+        ts = batch.ppg_timestamps_ms or []
+        if not green or len(green) != len(ts):
+            return
+        samples = [(int(t), int(g)) for t, g in zip(ts, green)]
+        if not samples:
+            return
+        # Morphology is the only PRODUCTION consumer (internal 100->64 downsample).
+        if self._morpho_clf is not None and self._morpho_clf.ready:
+            self._morpho_clf.ingest_ondemand_ppg(samples)
+        # The valence-FD engines (research, observed-only) consume the same wave.
+        for name in ("_valence_fd", "_valence_wesad", "_valence_eevr", "_valence_case"):
+            c = getattr(self.research, name, None)
+            if c is not None:
+                c.ingest_ondemand_ppg(samples)
 
     def _run_and_publish(
         self,
@@ -496,7 +399,7 @@ class ComputeEngineService:
         if publish_epoch:
             self._last_epoch_at = now
         # Let _publish_legacy advance the epoch-paced verdict stabiliser only on
-        # epoch ticks (every 30 s), not on every 1 Hz batch — its median/hysteresis
+        # epoch ticks (every 30 s), not on every 1 Hz batch, its median/hysteresis
         # windows are sized in epochs, not seconds.
         self._is_epoch_tick = publish_epoch
 
@@ -576,7 +479,7 @@ class ComputeEngineService:
         `track` is the model's ValenceTrack (baseline + smoother + verdict
         stabiliser). It also folds this epoch into the track's stabiliser (confidence
         gate + median + hysteresis) and attaches the READY quadrant (emotion /
-        emotion_code) to the dict — so the dashboard reads a stable verdict instead
+        emotion_code) to the dict, so the dashboard reads a stable verdict instead
         of recomputing it in SQL."""
         vz = out_dict.get("valence_z")
         if vz is None:
@@ -600,7 +503,7 @@ class ComputeEngineService:
         out_dict["neutral_valence_z"] = round(vbase.neutral_valence_z or 0.0, 4)
         out_dict["valence_baseline_ready"] = vbase.is_ready
 
-        # Stabilised 2D Russell quadrant for THIS model — the single source of
+        # Stabilised 2D Russell quadrant for THIS model, the single source of
         # truth the dashboard displays (no CASE WHEN in SQL). Always emitted, not
         # gated on VR: valence here is the model's own personal-calibrated pulse
         # valence; arousal is the validated z. Honest at low confidence because
@@ -626,12 +529,10 @@ class ComputeEngineService:
         """Publish the parallel research engines on biofizic/legacy/* (never VR)."""
         out = self.research.run(batch=batch, result=result, baseline=self.pipeline.baseline)
         ts = self._anchor_ms
-        log.debug("legacy out: ppg=%s wesad=%s resp=%s",
-                  out.ppg is not None, out.wesad is not None, out.respiration)
+        log.debug("legacy out: ppg=%s resp=%s",
+                  out.ppg is not None, out.respiration)
         if out.ppg is not None:
             client.publish("biofizic/legacy/ppg", json.dumps({"ts": ts, **out.ppg}), qos=0)
-        if out.wesad is not None:
-            client.publish("biofizic/legacy/wesad", json.dumps({"ts": ts, **out.wesad}), qos=0)
         if out.respiration is not None:
             client.publish("biofizic/legacy/resp", json.dumps({"ts": ts, **out.respiration}), qos=0)
         if out.valence_fd is not None:
@@ -671,7 +572,7 @@ class ComputeEngineService:
                     # collapses to chance (~51% across CASE/EMOGNITION/DEAP), so we
                     # must not assert a valence sign there. Below the threshold the
                     # PPG valence is suppressed (treated as "undetermined") and only
-                    # arousal is reported. The VR scene context is exempt — it is an
+                    # arousal is reported. The VR scene context is exempt, it is an
                     # honest external prior, not the weak PPG signal.
                     ppg_intensity_ok = abs(arousal_z) >= VALENCE_INTENSITY_GATE_Z
                     if use_context:
@@ -700,7 +601,7 @@ class ComputeEngineService:
 
         # EEVR / CASE valence: observed-only comparison models, each personally
         # recentered on its OWN baseline (same as WESAD) so the dashboard shows
-        # calibrated emotion for all three — not raw valence. They do NOT feed the
+        # calibrated emotion for all three, not raw valence. They do NOT feed the
         # watch verdict (no stabiliser / decision cache).
         if out.valence_eevr is not None:
             self._enrich_valence(
@@ -710,26 +611,6 @@ class ComputeEngineService:
             self._enrich_valence(
                 out.valence_case, self.research.valence_tracks["case"], result)
             client.publish("biofizic/legacy/valence_case", json.dumps({"ts": ts, **out.valence_case}), qos=0)
-        # Polarity (negative / neutral / positive). The 3-class model has its own
-        # neutral class, but at low arousal it can still mistake a resting subject
-        # for mild stress. AROUSAL GATE: you cannot be 'stressed/negative' while
-        # physiologically calm, so if arousal is at/below the subject's resting
-        # baseline (z <= 0) we force NEUTRAL. Arousal is the validated axis; we let
-        # it veto a polarity assertion that contradicts a calm body. Above baseline,
-        # the model's negative/positive call stands.
-        if out.polarity is not None:
-            arousal_z = 0.0
-            if result is not None and result.decision is not None:
-                arousal_z = float(getattr(result.decision,
-                                          "stress_index_z_filtered", 0.0) or 0.0)
-            out.polarity["arousal_z"] = round(arousal_z, 4)
-            out.polarity["arousal_gated"] = False
-            if arousal_z <= 0.0 and out.polarity.get("label_code") != 0:
-                # calm body -> override any non-neutral call to neutral
-                out.polarity["label"] = "neutral"
-                out.polarity["label_code"] = 0
-                out.polarity["arousal_gated"] = True
-            client.publish("biofizic/legacy/polarity", json.dumps({"ts": ts, **out.polarity}), qos=0)
 
         # Cache the three models' predictions + the live arousal z at this instant,
         # so a feedback tap can pair the user's label with what each model said
@@ -746,18 +627,22 @@ class ComputeEngineService:
         }
 
     def _handle_feedback(self, client, data, now) -> None:
-        """A feedback tap: pair the user's chosen Russell quadrant with the latest
-        33-feature PPG vector + what the three models predicted, and append it to
-        data/feedback_labels.jsonl. Re-publish a summary for the Grafana dashboard."""
-        from affectus.dsp.feedback_store import QUADRANTS, append_feedback
+        """A feedback tap: pair the user's chosen state with the live model feature
+        vectors + what the models predicted, append to data/feedback_labels.jsonl,
+        and try a personal retrain once enough labels exist. Re-publish a summary."""
+        from affectus.dsp.feedback_store import append_feedback, normalize_state
 
         quadrant = data.get("quadrant")
-        if quadrant not in QUADRANTS:
-            log.warning("feedback ignored: bad quadrant %r", quadrant)
+        # Accept the new 3 states and the old 4 quadrants (mapped). None => unknown.
+        if normalize_state(quadrant) is None:
+            log.warning("feedback ignored: unknown label %r", quadrant)
             return
         eng = getattr(self.research, "_valence_wesad", None)
         features = getattr(eng, "last_features", None) if eng is not None else None
         feat_ts = getattr(eng, "last_features_ts", 0) if eng is not None else 0
+        # The live model feature vectors at label time. THESE feed the retrain loop.
+        state_features = getattr(self._state_clf, "last_features", None) if self._state_clf else None
+        morpho_features = getattr(self._morpho_clf, "last_features", None) if self._morpho_clf else None
         # Feature freshness: how old is the labelled window vs the tap.
         tap_ms = data.get("ts") if isinstance(data.get("ts"), (int, float)) else now * 1000
         age_s = (float(tap_ms) - feat_ts) / 1000.0 if feat_ts else None
@@ -767,10 +652,14 @@ class ComputeEngineService:
             arousal_z=preds.get("arousal_z"),
             features_age_s=age_s,
             preds=preds,
+            state_features=state_features,
+            morpho_features=morpho_features,
         )
-        log.info("Feedback stored: %s (n_features=%d, age=%.1fs)",
-                 quadrant, row["n_features"], age_s or -1.0)
-        # Summary for Influx/Grafana (NOT the 33 features — those stay in the JSONL).
+        log.info("Feedback stored: %s -> %s (state_feats=%s)",
+                 quadrant, row["state"], state_features is not None)
+        # After storing, try a personal retrain (cheap, user-paced).
+        self._maybe_retrain_personal(client)
+        # Summary for Influx/Grafana (NOT the 33 features, those stay in the JSONL).
         client.publish("biofizic/legacy/feedback", json.dumps({
             "ts": row["ts"],
             "quadrant_code": row["quadrant_code"],
@@ -778,6 +667,34 @@ class ComputeEngineService:
             "wesad_p": row["wesad_p_positive"],
             "eevr_p": row["eevr_p_positive"],
             "case_p": row["case_p_positive"],
+        }), qos=0)
+
+    def _maybe_retrain_personal(self, client) -> None:
+        """After a label is stored, try to retrain a personal 3-state model and,
+        if it passed the self-check, hot-reload it into the live classifier and
+        announce it on the dashboard. Triggered only on taps (user-paced), so the
+        RandomForest fit here is cheap enough to run inline. Never fatal."""
+        if self._state_clf is None:
+            return
+        try:
+            from affectus.research.stari.personal_trainer import maybe_retrain
+            res = maybe_retrain()
+        except Exception:
+            log.exception("personal retrain failed")
+            return
+        if not res.get("trained"):
+            log.info("Personal model not (re)trained: %s | counts=%s",
+                     res.get("reason"), res.get("counts"))
+            return
+        became_personal = self._state_clf.reload()
+        log.info("Personal model active (self_check=%s, counts=%s)",
+                 res.get("self_check"), res.get("counts"))
+        sc = res.get("self_check") or {}
+        client.publish("biofizic/legacy/personal_model", json.dumps({
+            "ts": int(time.time() * 1000),
+            "active": 1 if became_personal else 0,
+            "personal_acc": sc.get("personal"),
+            "generic_acc": sc.get("generic"),
         }), qos=0)
 
     def _handle_context(self, data, now) -> None:
@@ -847,7 +764,7 @@ class ComputeEngineService:
             "labels_agree": decision.labels_agree,
             "arousal_10": decision.display_arousal_10,
             "arousal_pct": round(decision.display_arousal_10 * 10.0, 1),
-            # NOTE: valence + 2D emotion verdict are NOT sent to the watch — they
+            # NOTE: valence + 2D emotion verdict are NOT sent to the watch, they
             # were too noisy/low-confidence to be useful. Arousal is the only live
             # classifier on the watch. The valence research path still runs on
             # biofizic/legacy/valence_wesad (Grafana only) for offline study.
@@ -896,7 +813,7 @@ class ComputeEngineService:
         if result is not None:
             # Report the window that ACTUALLY drove the verdict (w60 normally,
             # w30 only during the first 60 s before w60 is computable), not a
-            # hardcoded label — the windows dashboard must not misattribute the
+            # hardcoded label, the windows dashboard must not misattribute the
             # decision to w30.
             payload["window_used"] = result.best_window_label
             payload["data_quality"] = result.best.quality
@@ -941,14 +858,14 @@ class ComputeEngineService:
                 "mean_hr": None,
                 "window_sec": PRIMARY_DECISION_WINDOW_SECONDS,
             }
-        client.publish("biofizic/state/live", json.dumps(payload), qos=0)
+        client.publish(Out.LIVE, json.dumps(payload), qos=0)
 
     def _apply_live_arousal_smoothing(
         self, payload: dict, decision: PhysiologyDecision
     ) -> None:
         """
         Apply streak-based hysteresis to the integer arousal_10 reported on
-        biofizic/state/live.
+        biofizic/out/live.
 
         The pipeline recomputes Kubios SI every second on a rolling 30 s buffer.
         A single new IBI can shift SI just enough to cross a zone boundary,
@@ -1001,7 +918,7 @@ class ComputeEngineService:
             "baseline_ready": result.baseline_ready,
             "ibi_buffer_size": result.ibi_buffer_size,
         }
-        client.publish("biofizic/state/windows", json.dumps(payload), qos=0)
+        client.publish(Out.WINDOWS, json.dumps(payload), qos=0)
 
     def _publish_state(
         self,
@@ -1011,15 +928,15 @@ class ComputeEngineService:
         result: MultiWindowResult | None = None,
     ) -> None:
         """
-        Publish the epoch decision (every 30 s) on biofizic/state. The message
+        Publish the epoch decision (every 30 s) on biofizic/out/arousal. The message
         is retained so a watch reconnecting between epochs can bootstrap from
         the last known decision without waiting up to 30 s for the next one.
         """
         payload = self._decision_payload(decision, live=False, result=result)
-        client.publish("biofizic/state", json.dumps(payload), qos=1, retain=True)
+        client.publish(Out.AROUSAL, json.dumps(payload), qos=1, retain=True)
 
     def _publish_emotion_state(self, client, result: MultiWindowResult, batch) -> None:
-        """3-state emotion verdict (CALM/DISCONFORT/PLACUT) on biofizic/state/emotie.
+        """3-state emotion verdict (CALM/DISCONFORT/PLACUT) on biofizic/out/emotion.
         Research/viz only, NOT the production arousal verdict. Adapts to the user via a
         personal rest baseline: feeds calm windows, classifies once the baseline locks
         (~12 rest windows). Returns nothing until then (no premature verdict)."""
@@ -1032,7 +949,7 @@ class ComputeEngineService:
         if window is None:
             return
         # Feed the personal baseline from stable, clean windows: still + decent
-        # signal quality. NOT gated on `alert` — the CUSUM alert tracks arousal
+        # signal quality. NOT gated on `alert`, the CUSUM alert tracks arousal
         # CHANGE, not whether the user is at rest, and it stays on for tired/active
         # users, which would starve the baseline forever (it never locks).
         is_rest = (decision.motion_state == "still"
@@ -1045,7 +962,7 @@ class ComputeEngineService:
         morpho = self._morpho_clf.predict() if (self._morpho_clf is not None
                                                 and self._morpho_clf.ready) else None
         if out is None:
-            # Baseline not locked yet — tell the dashboard we're still calibrating.
+            # Baseline not locked yet, tell the dashboard we're still calibrating.
             payload = {"ts": self._anchor_ms, "state": "CALIBRARE",
                        "confidence": 0.0, "p_calm": 0.0, "p_disconfort": 0.0,
                        "p_placut": 0.0, "baseline_ready": False, "calibrating": True}
@@ -1079,38 +996,50 @@ class ComputeEngineService:
                        "morpho_state": morpho["state"] if morpho else None,
                        "morpho_conf": morpho["confidence"] if morpho else 0.0,
                        "baseline_ready": True, "calibrating": False}
-        client.publish("biofizic/state/emotie", json.dumps(payload), qos=0)
+        # Retained: a watch (re)subscribing mid-session gets the last verdict
+        # immediately instead of waiting for the next epoch (the verdict is QoS 0
+        # and would otherwise be lost if the watch reconnected between publishes).
+        client.publish(Out.EMOTION, json.dumps(payload), qos=0, retain=True)
 
     @staticmethod
     def _russell_quadrant(arousal: int, valence_x: float, morpho) -> tuple:
-        """Mapeaza arousal(0-10) x valenta(-1..+1) -> cadran Russell + 3 emotii tipice.
-        Onest: NU pretinde emotia exacta, da ZONA + emotiile care apar tipic acolo.
+        """Mapeaza arousal(0-10) x valenta(-1..+1) -> o stare cu nume uman + sugestii.
 
-        Fiabilitate valenta: morfologia separa valenta DOAR la activare (testat 86% pe
-        stres-vs-amuse, ambele activate). La arousal jos NU e validata -> marcam incert,
-        nu fortam trist-vs-relaxat. Sus + valenta = solid; jos = doar 'arousal jos'."""
+        Structura bazata pe ce se separa ONEST din date:
+          - Arousal se separa binar (jos/sus) la 68-73% pe senzori reali -> 3 niveluri
+            native de activare: RELAXAT (jos) / NORMAL (baseline) / ACTIVAT (sus).
+          - Valenta (placut/neplacut) NU se separa din HRV; doar din MORFOLOGIE si DOAR
+            la arousal mare (morfologia separa 83% disc-vs-placut pe semnal bun, validat).
+        Deci FUZIUNEA cu valenta intra DOAR sus + morfologie fiabila -> BUCUROS/STRESAT.
+        Sub acel prag, starea vine pur din nivelul de arousal (validat), fara a ghici
+        polaritatea. Asa userul vede mereu o emotie reala, iar sistemul ramane onest."""
         VAL_NEUTRAL = 0.12   # |valence| sub asta = neutru pe valenta
-        AROUSAL_LO, AROUSAL_HI = 4, 6  # <4 jos, >6 sus, intre = mijloc
-        # valenta e fiabila doar daca morfologia e gata SI arousalul e mare
+        AROUSAL_LO, AROUSAL_HI = 4, 6  # <=4 jos (RELAXAT), 5-6 normal, >=7 sus (ACTIVAT)
+        # valenta e fiabila DOAR daca morfologia e gata SI arousalul e mare
         valence_reliable = (morpho is not None and arousal > AROUSAL_HI)
         conf = round(float(morpho["confidence"]) if (morpho and valence_reliable)
                      else 0.5, 2)
 
-        if arousal > AROUSAL_HI:  # SUS (activat) - valenta conteaza si e fiabila
-            if valence_x >= VAL_NEUTRAL:
-                return ("Activare pozitiva", ["Entuziasm", "Bucurie", "Excitare"],
-                        "morfologie", conf, valence_reliable)
-            if valence_x <= -VAL_NEUTRAL:
-                return ("Activare negativa", ["Stres", "Furie", "Anxietate"],
-                        "morfologie", conf, valence_reliable)
-            return ("Activat", ["Alert", "Tensionat", "Stimulat"],
-                    "arousal", conf, valence_reliable)
-        if arousal < AROUSAL_LO:  # JOS (relaxat/obosit) - valenta INCERTA, nu fortam
-            return ("Calm/dezactivat",
-                    ["Relaxare", "Odihna", "Plictiseala"],
+        if arousal > AROUSAL_HI:  # SUS (ACTIVAT)
+            # Daca valenta e fiabila (morfologie gata) si clara, putem numi exact
+            # starea. Altfel NU ghicim placut-vs-neplacut: spunem ZONA = ambele stari
+            # care se confunda la activare mare ("Stres sau Entuziasm"), onest. Userul
+            # stie care e (el o simte); sistemul nu pretinde ce nu poate masura.
+            if valence_reliable and valence_x >= VAL_NEUTRAL:
+                return ("Entuziasmat", ["Bucuros", "Energic", "Vesel"],
+                        "morfologie", conf, True)
+            if valence_reliable and valence_x <= -VAL_NEUTRAL:
+                return ("Stresat", ["Tensionat", "Iritat", "Agitat"],
+                        "morfologie", conf, True)
+            # activat dar valenta incerta -> ZONA, nu o eticheta falsa. Cele doua stari
+            # tipice la activare mare care nu se pot separa din puls.
+            return ("Stres sau Entuziasm", ["esti puternic activat", "energie ridicata"],
+                    "arousal", conf, False)
+        if arousal <= AROUSAL_LO:  # JOS (dezactivat) - stare nativa de arousal, validata
+            return ("Relaxat", ["Linistit", "Calm", "Odihnit"],
                     "arousal", round(1.0 - arousal / AROUSAL_LO, 2), False)
-        # MIJLOC (la baseline)
-        return ("Neutru", ["Concentrat", "Atent", "Echilibrat"],
+        # MIJLOC (5-6) - la baseline-ul personal
+        return ("Normal", ["Echilibrat", "Concentrat", "Atent"],
                 "arousal", 0.6, False)
 
     def _publish_calibration(self, client, message: str, *, phase: str = "done") -> None:
@@ -1121,7 +1050,7 @@ class ComputeEngineService:
             "message": message,
             "profile_ready": self.pipeline.baseline.is_ready,
         }
-        client.publish("biofizic/calibration/status", json.dumps(payload), qos=1, retain=True)
+        client.publish(Out.CALIBRATION, json.dumps(payload), qos=1, retain=True)
 
 
 def main() -> None:

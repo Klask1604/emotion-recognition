@@ -30,9 +30,7 @@ alimentează Grafana — de aceea motorul WESAD de valență e cel care produce
 |---|---|---|
 | `valence/` | features (33), fd_engine, wesad_engine, ppg_fd, ppg_morph, ppg_hrv_features, ppg_vascular_features, wesad_channel, tracks (per-model calibrare) | `biofizic/legacy/valence_*` |
 | `respiration/` | compare (RSA vs PPG), estimatorii rsa/ppg | `biofizic/legacy/resp` |
-| `polarity/` | engine (negativ/pozitiv/neutru, gated pe arousal) | `biofizic/legacy/polarity` |
 | `ppg/` | raw_ppg (buffer + peaks + IBI reconstruit) | `biofizic/legacy/ppg` |
-| `wesad_stress_engine.py` | WESAD RandomForest stress probability | `biofizic/legacy/wesad` |
 | `toggles.py` | flagurile build-time pentru toate de mai sus | — |
 | `__init__.py` | `ResearchEngines` — facada lazy care rulează doar motoarele toggle-ate | — |
 
@@ -46,17 +44,11 @@ alimentează Grafana — de aceea motorul WESAD de valență e cel care produce
   (56% LOSO)**. Ținut pentru a arăta divergența pe dashboard.
 - **valence/case (case)** — model CASE. Rezultat: **≈ 58%**, singurul semnal real de valență
   dintre cele trei. Comparat live pe semnalul propriu al ceasului.
-- **polarity/engine** — detector negativ/pozitiv/neutru (WESAD wrist BVP, ~81% LOSO, cu
-  transformare CORAL spre semnalul ceasului). Gated pe arousal: un corp calm (z ≤ 0) forțează
-  NEUTRAL — arousal-ul (axa validată) vetoează o aserțiune de polaritate contrazisă de fiziologie.
 - **valence/fd_engine + ppg_fd** — 9 features de domeniu-frecvență din armonicele PPG
   (replicare Frontiers 2025). Features-only, fără verdict; pentru teză + training viitor.
 - **respiration/compare** — comparator RSA-din-IBI vs respirație-din-amplitudine-PPG, side by
   side. Decide care sursă (dacă vreuna) e suficient de fiabilă pe încheietură pentru a fi fuzată
   ulterior. Research-only.
-- **wesad_stress_engine** — WESAD RandomForest stress probability. Antrenat pe chest-strap
-  (RespiBAN ECG+EDA+EMG+RESP); aplicat pe PPG-only de încheietură e **biased prin construcție**
-  (fără EDA) și produce p_stress fals-încrezător. Rezultat negativ documentat. Default OFF.
 - **ppg/raw_ppg** — buffer PPG pentru detecția de peak-uri, PPA z-scoring și IBI reconstruit din
   PPG; sursă pentru dashboard-ul de validare (Samsung IBI vs IBI-din-PPG) și infrastructură
   pentru motoarele de valență/respirație.

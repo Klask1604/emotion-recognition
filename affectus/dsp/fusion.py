@@ -1,6 +1,6 @@
 """
 Fusion core: the device-agnostic math that combines arousal channels into one
-smoothed, change-detected verdict. Shared by every device family — a wrist, a
+smoothed, change-detected verdict. Shared by every device family, a wrist, a
 chest strap or a head-worn device all feed FusionChannels into _fuse and the same
 Kalman/CUSUM. Only WHICH channels exist differs per device (devices/<family>),
 not how they are fused.

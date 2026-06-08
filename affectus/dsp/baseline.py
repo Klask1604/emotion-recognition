@@ -96,7 +96,7 @@ class RestBaselineStore:
         spacing = BASELINE_OBSERVATION_INTERVAL_S if min_spacing_s is None else min_spacing_s
         if now is not None and self._last_observation_s is not None:
             if now - self._last_observation_s < spacing:
-                return  # too soon after the previous sample — skip (decorrelate)
+                return  # too soon after the previous sample, skip (decorrelate)
         if now is not None:
             self._last_observation_s = now
         self.rest_observation_count += 1

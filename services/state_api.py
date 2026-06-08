@@ -1,9 +1,9 @@
 """
-Manual state publisher for VR testing — FastAPI over MQTT.
+Manual state publisher for VR testing, FastAPI over MQTT.
 
 When the classifier (compute-engine) is OFF, this API publishes a message in the
-exact `biofizic/state` schema the Unity scene consumes, so you can drive arousal
-state transitions by hand (HTTP) instead of from the watch.
+exact `biofizic/out/arousal` schema the Unity scene consumes, so you can drive
+arousal state transitions by hand (HTTP) instead of from the watch.
 
 Run:
     uvicorn services.state_api:app --host 0.0.0.0 --port 8200
@@ -30,9 +30,14 @@ import paho.mqtt.client as mqtt
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from affectus.topics import Out
+
 BROKER = os.environ.get("MQTT_BROKER", "paxbespoke.automateflow.ro")
 PORT = int(os.environ.get("MQTT_PORT", "1883"))
-TOPIC = "biofizic/state"
+TOPIC = Out.AROUSAL
 
 # Matches affectus.dsp.arousal_mapper.arousal_scale_10_to_label.
 def emotion_label(arousal_10: int) -> str:

@@ -1,18 +1,18 @@
 """
-Valence research tracks — one self-contained bundle per valence model.
+Valence research tracks, one self-contained bundle per valence model.
 
 The three valence models (WESAD / EEVR / CASE) are the SAME engine class with a
 different `.joblib` bundle; each needs its own per-subject calibration so the
 dashboard shows subject-relative emotion (neutral measured, not assumed 0). That
 calibration is three small stateful objects that used to be spelled out by name in
 the pipeline (`valence_baseline_eevr`, `valence_smoother_eevr`, ...) and reset one
-by one in `reset_baseline` — adding a model meant editing the production engine in
+by one in `reset_baseline`, adding a model meant editing the production engine in
 two places (OCP violation + shotgun surgery).
 
 A `ValenceTrack` packs those three objects (personal baseline + 60 s smoother +
 verdict stabiliser) behind one key. The pipeline holds a dict
 `{key: ValenceTrack(key)}` built from `ENABLED_VALENCE_MODELS`, so adding DEAP is a
-single list entry — the engine never learns the model names. Lives under research/
+single list entry, the engine never learns the model names. Lives under research/
 because none of this feeds the production arousal verdict; it only enriches the
 `biofizic/legacy/valence_*` dashboards (WESAD additionally caches for the watch's
 2D verdict, which is research-on-trial by design).
@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from affectus.config import data_dir, valence_baseline_path
+from affectus.config import data_dir
 from affectus.dsp.valence_baseline import ValenceBaselineStore, ValenceSmoother
 from affectus.dsp.emotion import ValenceVerdictStabilizer
 

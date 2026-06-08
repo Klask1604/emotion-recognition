@@ -36,14 +36,14 @@ class ValenceWesadEngine:
         self._state.ensure_loaded(model_path)
         if self._state.model is None:
             raise FileNotFoundError(
-                "models/valence_wesad.joblib not found — train it with "
+                "models/valence_wesad.joblib not found, train it with "
                 "train/train_valence_wesad.py"
             )
         self._ppg: deque[tuple[int, int]] = deque()      # 25 Hz from batch
         self._ppg_hi: deque[tuple[int, int]] = deque()   # 100 Hz on-demand
         # The most recent 33-feature PPG vector this engine extracted, kept so the
         # feedback handler can pair the user's label with the exact features the
-        # models saw — without re-extracting. (None until the first valid window.)
+        # models saw, without re-extracting. (None until the first valid window.)
         self.last_features: list[float] | None = None
         self.last_features_ts: int = 0
 

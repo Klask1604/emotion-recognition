@@ -5,7 +5,7 @@ The signal-quality and baseline algorithms are written once (shared/); the few
 thresholds that genuinely depend on the sensor MODALITY (not the subject) live in
 a SensorProfile, keyed by a profile name carried on the frame's
 DeviceCapabilities. The shared algorithm reads the right number from the profile
-— it never branches on device.
+- it never branches on device.
 
 Each device registers its own profile via register_profile() from its profile
 module (today: contract/wrist_profile.py). This module owns only the structure +
